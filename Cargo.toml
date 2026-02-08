@@ -1,0 +1,11 @@
+[package]
+name = "risundle"
+version = "0.1.0"
+edition = "2021"
+authors = ["りすりす/TwoSquirrels"]
+description = "A C++ bundler with tree-shaking for competitive programming"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
