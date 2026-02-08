@@ -20,22 +20,17 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    let output = args.output.as_deref().unwrap_or("<stdout>");
+
     if args.verbose {
         println!("Running risundle...");
+        println!("Input: {}", args.input);
+        println!("Output: {}", output);
+    } else {
+        println!("Input: {}", args.input);
+        println!("Output: {}", output);
     }
 
-    match args.output {
-        Some(output) => {
-            println!("Input: {}", args.input);
-            println!("Output: {}", output);
-            // TODO: Implement bundling logic
-            Ok(())
-        }
-        None => {
-            println!("Input: {}", args.input);
-            println!("Output: <stdout>");
-            // TODO: Implement bundling logic with stdout
-            Ok(())
-        }
-    }
+    // TODO: Implement bundling logic
+    Ok(())
 }
