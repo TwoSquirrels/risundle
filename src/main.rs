@@ -6,7 +6,7 @@ use clap::Parser;
 struct Args {
     /// Input file path
     #[arg(short, long)]
-    input: Option<String>,
+    input: String,
 
     /// Output file path
     #[arg(short, long)]
@@ -24,21 +24,18 @@ fn main() -> anyhow::Result<()> {
         println!("Running risundle...");
     }
 
-    match (args.input, args.output) {
-        (Some(input), Some(output)) => {
-            println!("Input: {}", input);
+    match args.output {
+        Some(output) => {
+            println!("Input: {}", args.input);
             println!("Output: {}", output);
             // TODO: Implement bundling logic
             Ok(())
         }
-        (Some(input), None) => {
-            println!("Input: {}", input);
+        None => {
+            println!("Input: {}", args.input);
             println!("Output: <stdout>");
             // TODO: Implement bundling logic with stdout
             Ok(())
-        }
-        (None, _) => {
-            anyhow::bail!("No input file specified. Use --help for usage information.")
         }
     }
 }
