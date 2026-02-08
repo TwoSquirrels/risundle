@@ -38,8 +38,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         (None, _) => {
-            println!("No input file specified. Use --help for usage information.");
-            Ok(())
+            anyhow::bail!("No input file specified. Use --help for usage information.")
         }
     }
 }
