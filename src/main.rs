@@ -20,16 +20,13 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let output = args.output.as_deref().unwrap_or("<stdout>");
-
     if args.verbose {
         println!("Running risundle...");
-        println!("Input: {}", args.input);
-        println!("Output: {}", output);
-    } else {
-        println!("Input: {}", args.input);
-        println!("Output: {}", output);
     }
+
+    let output = args.output.as_deref().unwrap_or("<stdout>");
+    println!("Input: {}", args.input);
+    println!("Output: {}", output);
 
     // TODO: Implement bundling logic
     Ok(())
