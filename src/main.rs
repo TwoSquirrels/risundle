@@ -1,5 +1,7 @@
 mod cli;
 mod commands;
+mod config;
+mod local;
 
 use std::ffi::OsString;
 

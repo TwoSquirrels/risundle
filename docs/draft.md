@@ -14,7 +14,7 @@
     - マクロの依存を検出するのが難しく、マクロを残してしまうと Tree-Shaking が難しくなるからという理由もある。
 - 複数ソースファイルのバンドルは非対応。
 - Rust で開発する。
-- 内部保存用のデータは全て Rust でいう [`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) で取得できるディレクトリで管理するものとする。以後このパスを `$LOCAL` と呼ぶ。
+- 内部保存用のデータは全て Rust でいう [`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) で取得できるディレクトリ配下の `risundle` ディレクトリで管理するものとする。以後このパスを `$LOCAL` と呼ぶ。OS 共有のデータディレクトリ直下を直接使わないのは、他アプリとの衝突を避けるため。
 
 ## サブコマンド `library`
 
