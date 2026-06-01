@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
 
-/// `tags.json` の内容。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tags {
     pub path: PathBuf,
