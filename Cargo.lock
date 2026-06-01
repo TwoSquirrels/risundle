@@ -350,6 +350,7 @@ dependencies = [
  "clap",
  "dirs",
  "serde",
+ "serde_json",
  "tempfile",
  "toml",
 ]

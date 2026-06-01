@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod local;
+mod tags;
 
 use std::ffi::OsString;
 
