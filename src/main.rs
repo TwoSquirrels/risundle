@@ -2,7 +2,9 @@ mod cli;
 mod commands;
 mod config;
 mod dummy;
+mod identifiers;
 mod local;
+mod relpath;
 mod tags;
 
 use std::ffi::OsString;

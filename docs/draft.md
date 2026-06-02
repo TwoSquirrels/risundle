@@ -7,7 +7,7 @@
 - minify もしない。
     - v3.0 以降は minify も目指していいかも？
 - 厳密な Tree-Shaking はしない。
-    - C++ の依存検出は難しいので、Ctags によるキーワード検出で依存検出を行う。
+    - C++ の厳密な依存検出は難しいので、識別子名の照合による近似的な依存検出を行う。
     - 余分に依存を検出する方向に倒せば、エラーは防げる。
 - マクロは展開される。
     - ローカルデバッグ用の `#include` を Tree-Shaking できるようにしたいので。
@@ -21,7 +21,7 @@
 - `risundle library add <id> <path>` (ライブラリの登録)
     - `$LOCAL/libraries/<id>/tags.json` が既に存在する場合はエラー。
     - `<path>` をインクルードパスとして、それ以下の全ファイルについて、その中身を例えば `atcoder/modint` なら `#pragma RISUNDLE_DUMMY <atcoder/modint>` にしたファイルで、ディレクトリ構造はそのまま `$LOCAL/libraries/<id>/dummy/` 以下に格納する。
-    - `<path>` を `$LOCAL/libraries/<id>/tags.json` に保存。`<id>` が `std` でない場合は、[ptags (Universal Ctags ラッパー)](https://crates.io/crates/ptags) によるファイル毎の識別子一覧と、`<path>` 以下の内容から計算した集約ハッシュも合わせて保存。
+    - `<path>` を `$LOCAL/libraries/<id>/tags.json` に保存。`<id>` が `std` でない場合は、[tree-sitter](https://crates.io/crates/tree-sitter) (C++ 文法 [tree-sitter-cpp](https://crates.io/crates/tree-sitter-cpp) と [tree-sitter-tags](https://crates.io/crates/tree-sitter-tags)) で抽出したファイル毎の定義識別子一覧と、`<path>` 以下の内容から計算した集約ハッシュも合わせて保存。
 - `risundle library delete <id>` (ライブラリの登録削除)
     - `$LOCAL/libraries/<id>/tags.json` が存在しない場合はエラー。
     - `$LOCAL/libraries/<id>/` を削除。
@@ -105,7 +105,7 @@
 - `schema_version`: スキーマの互換性チェック用の整数。未知の値の場合は再生成を促すエラーを出す。
 - `path`: `library add` で指定されたインクルードパス (絶対パス)。`-I` オプションへそのまま渡す。
 - `hash`: `path` 以下の全ファイルの相対パスと内容から計算した集約ハッシュ (`sha256:` プレフィックス付き)。ライブラリの更新検知に使う。mtime ではなく内容ベースなので `git clone` や `cp` での時刻変化に影響されず、相対パスも含めるためファイルの追加・削除・リネームも検知できる。
-- `files`: ライブラリルート (`path`) からの相対パスをキーとし、そのファイルが定義する識別子名の配列を値とする。ptags で取得し、kind は持たず名前のみ。
+- `files`: ライブラリルート (`path`) からの相対パスをキーとし、そのファイルが定義する識別子名の配列を値とする。tree-sitter-cpp の tags クエリで各ファイルの定義シンボルを取得し、kind は持たず名前のみ。
     - `std` は `files`・`hash` を省略する。`std` 以外は両方を必ず持つ (`files` は識別子が一つも無くても空オブジェクト `{}`)。これにより「`std`」と「識別子 0 件のライブラリ」を構造で区別する。
 
 ## `.risundlerc.toml` フォーマット

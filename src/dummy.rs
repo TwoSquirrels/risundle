@@ -6,9 +6,11 @@
 // add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
 #![allow(dead_code)]
 
-use std::path::{Component, Path};
+use std::path::Path;
 
 use anyhow::{Context, Result};
+
+use crate::relpath;
 
 const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 
@@ -45,28 +47,10 @@ fn write_dummy(relative: &Path, dummy_root: &Path) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("{} の作成に失敗しました", parent.display()))?;
     }
-    let include = to_include_path(relative)?;
+    let include = relpath::to_slash(relative)?;
     let content = format!("#pragma {DUMMY_PRAGMA} <{include}>\n");
     std::fs::write(&destination, content)
         .with_context(|| format!("{} の書き込みに失敗しました", destination.display()))
-}
-
-/// 相対パスを `#include` 用の `/` 区切り文字列へ変換する。
-///
-/// `strip_prefix` 後の相対パスは通常要素のみで構成されるため、`Normal` 以外は現れない。
-/// 非 UTF-8 のファイル名は `#include` パスたり得ないためエラーとする。
-fn to_include_path(relative: &Path) -> Result<String> {
-    let mut parts = Vec::new();
-    for component in relative.components() {
-        let Component::Normal(name) = component else {
-            continue;
-        };
-        let name = name.to_str().with_context(|| {
-            format!("ファイル名が UTF-8 ではありません: {}", relative.display())
-        })?;
-        parts.push(name);
-    }
-    Ok(parts.join("/"))
 }
 
 #[cfg(test)]
