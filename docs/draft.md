@@ -35,9 +35,10 @@
         - `$LOCAL/libraries/*/tags.json` をリストアップし、それぞれのディレクトリ名についてそれを `<id>` として「`<id>` が指定されている場合」を実行。
 - `risundle library list` (ライブラリ一覧)
     - `$LOCAL/libraries/*/tags.json` をリストアップし、それぞれのディレクトリ名とインクルードパスを出力する。
-- `risundle library show <id>`
+- `risundle library show [-v | --verbose] <id>`
     - `$LOCAL/libraries/<id>/tags.json` が存在しない場合はエラー。
-    - `$LOCAL/libraries/<id>/tags.json` の情報と、`$LOCAL/libraries/<id>/dummy/` 以下のファイル一覧を出力。
+    - `$LOCAL/libraries/<id>/tags.json` の情報を出力。普段確認したい情報 (ID・インクルードパス・種別・定義識別子を持つファイル数) に絞る。
+    - `-v` 指定時は、集約ハッシュと各ファイルの定義識別子一覧も併せて出力する。
 
 ## メインコマンド
 

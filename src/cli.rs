@@ -76,5 +76,8 @@ pub enum LibraryCommand {
     Show {
         /// ライブラリ ID
         id: String,
+        /// ハッシュや各ファイルの定義識別子まで含めて表示する
+        #[arg(short, long)]
+        verbose: bool,
     },
 }

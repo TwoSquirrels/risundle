@@ -8,7 +8,9 @@
 //! プリプロセスを行わないため、`#include` 先の定義が混ざらず、ファイル単位の列挙が正しく行える。
 //!
 //! 逆引きで使わないメンバ変数名やマクロ名も拾うが、risundle は「余分に検出する方向に倒せば安全」
-//! という設計のため許容する (取りこぼしのみが依存漏れ = コンパイルエラーを招く)。
+//! という設計のため許容する (取りこぼしのみが依存漏れ = コンパイルエラーを招く)。ただし namespace 名
+//! だけは例外的に除外する。利用コードに必ず現れて全ヘッダーに紐づき、Tree-Shaking を無効化して
+//! しまうためで、過剰検出が「安全」でなくなる唯一のケースである (詳細は [`NAME_NODES`])。
 
 // add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
 #![allow(dead_code)]
@@ -39,12 +41,11 @@ const SKIP_DESCENT: &[&str] = &[
 ];
 
 /// 宣言子を辿った末端で、識別子名として採用するノード種別。
-const NAME_NODES: &[&str] = &[
-    "identifier",
-    "type_identifier",
-    "field_identifier",
-    "namespace_identifier",
-];
+///
+/// `namespace_identifier` は意図的に除外する。namespace 名 (`atcoder` 等) は複数ファイルで開かれ、
+/// 利用コードにも必ず現れるため、定義として登録すると逆引きでほぼ全ヘッダーが依存と判定され
+/// Tree-Shaking が無効化される。namespace 内のメンバは子の再帰で個別に拾うため取りこぼさない。
+const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier"];
 
 /// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名を集約する。
 ///
@@ -172,7 +173,6 @@ mod tests {
         let names = names_in(
             "union U { int a; };
              using Alias = int;
-             namespace ns {}
              constexpr int CONST_VAL = 1;
              template<class T> concept Num = true;
              enum Color { Red, Green };
@@ -181,7 +181,6 @@ mod tests {
         for expected in [
             "U",
             "Alias",
-            "ns",
             "CONST_VAL",
             "Num",
             "Color",
@@ -190,6 +189,20 @@ mod tests {
             "Ptr",
         ] {
             assert!(names.contains(&expected.to_owned()), "{expected} が漏れた");
+        }
+    }
+
+    #[test]
+    fn ignores_namespace_names() {
+        // namespace 名は利用コードに必ず現れ、ほぼ全ヘッダーに紐づくため定義として拾わない
+        // (拾うと Tree-Shaking が無効化される)。中のメンバ (dsu) は拾う。
+        let names = names_in("namespace atcoder { namespace internal { struct dsu {}; } }");
+        assert!(names.contains(&"dsu".to_owned()));
+        for ns in ["atcoder", "internal"] {
+            assert!(
+                !names.contains(&ns.to_owned()),
+                "{ns} は namespace 名なので拾うべきでない"
+            );
         }
     }
 
