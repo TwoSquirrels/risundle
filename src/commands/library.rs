@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 use crate::cli::LibraryCommand;
-use crate::local::LocalStore;
-use crate::tags::{Tags, TagsKind};
-use crate::{dummy, hash, identifiers};
+use crate::library::local::LocalStore;
+use crate::library::tags::{Tags, TagsKind};
+use crate::library::{dummy, hash, identifiers};
 
 /// `std` として扱うライブラリ ID。識別子情報を持たず、更新検知の対象外とする。
 const STD_ID: &str = "std";
@@ -86,11 +86,17 @@ fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn delete(store: &LocalStore, id: &str) -> Result<()> {
-    validate_id(id)?;
+/// ライブラリが登録済みであることを確認する。delete / update / show が処理前に呼ぶ。
+fn ensure_registered(store: &LocalStore, id: &str) -> Result<()> {
     if !store.is_registered(id) {
         bail!("ライブラリ `{id}` は登録されていません");
     }
+    Ok(())
+}
+
+fn delete(store: &LocalStore, id: &str) -> Result<()> {
+    validate_id(id)?;
+    ensure_registered(store, id)?;
     let library_dir = store.library_dir(id);
     std::fs::remove_dir_all(&library_dir)
         .with_context(|| format!("{} の削除に失敗しました", library_dir.display()))?;
@@ -121,9 +127,7 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
 /// 1 つのライブラリを再生成する。`path` 省略時は `tags.json` に保存済みのパスを再利用する。
 fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     validate_id(id)?;
-    if !store.is_registered(id) {
-        bail!("ライブラリ `{id}` は登録されていません");
-    }
+    ensure_registered(store, id)?;
     let source_root = match path {
         Some(path) => resolve_source_root(path)?,
         None => Tags::load(&store.tags_json(id))?.path,
@@ -151,9 +155,7 @@ fn list(store: &LocalStore) -> Result<()> {
 
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
-    if !store.is_registered(id) {
-        bail!("ライブラリ `{id}` は登録されていません");
-    }
+    ensure_registered(store, id)?;
     let tags = Tags::load(&store.tags_json(id))?;
     println!("ID:   {id}");
     println!("パス: {}", tags.path.display());

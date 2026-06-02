@@ -3,14 +3,11 @@
 //! 出力する。バンドル時、維持指定ライブラリの `-I` をこのダミーへ向け、pragma を後段で
 //! `#include` へ戻すことで、当該ライブラリを Tree-Shaking 対象から除外する。
 
-// add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::{relpath, source};
+use crate::fs::{relpath, source};
 
 const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 

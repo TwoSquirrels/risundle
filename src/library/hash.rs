@@ -2,15 +2,12 @@
 //! 計算し、ライブラリの更新検知に使う。mtime でなく内容ベースのため `git clone`/`cp` での時刻変化に
 //! 左右されず、相対パスも含めるためファイルの追加・削除・リネームも検知できる。
 
-// add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 
-use crate::{relpath, source};
+use crate::fs::{relpath, source};
 
 /// `root` 以下の全ファイルから集約ハッシュを計算し、`sha256:` プレフィックス付きで返す。
 pub fn aggregate(root: &Path) -> Result<String> {

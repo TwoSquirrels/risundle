@@ -9,14 +9,11 @@
 //! ダミー生成・識別子列挙・ハッシュ計算がいずれもこの同じ選別を共有することで、3 者が常に同一の
 //! ファイル集合を対象にする。対象がずれると `tags.json` の `files` と更新検知用ハッシュが食い違う。
 
-// add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
-#![allow(dead_code)]
-
 use std::path::{Component, Path};
 
 use anyhow::{Context, Result};
 
-use crate::walk;
+use crate::fs::walk;
 
 /// ソースとして扱う拡張子。競技プログラミングのライブラリに現れる C++ のヘッダ・ソースを網羅する。
 const SOURCE_EXTENSIONS: &[&str] = &[

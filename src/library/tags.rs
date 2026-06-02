@@ -1,10 +1,6 @@
 //! `tags.json` の読み書きを担うデータ層。ライブラリ管理ロジックとは独立し、
 //! データ構造の表現とシリアライズ/デシリアライズのみを責務とする。
 
-// 消費側 (library / bundle コマンド) が未実装の現段階では dead_code 判定となるため、
-// 実装が揃うまで明示的に許可する。
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

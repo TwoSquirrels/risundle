@@ -12,16 +12,13 @@
 //! だけは例外的に除外する。利用コードに必ず現れて全ヘッダーに紐づき、Tree-Shaking を無効化して
 //! しまうためで、過剰検出が「安全」でなくなる唯一のケースである (詳細は [`NAME_NODES`])。
 
-// add / update コマンドが消費するまでは未使用のため、実装が揃うまで明示的に許可する。
-#![allow(dead_code)]
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
 use tree_sitter::{Node, Parser};
 
-use crate::{relpath, source};
+use crate::fs::{relpath, source};
 
 /// 走査の再帰で降りないノード。降りても定義は得られず、むしろ参照名を定義と誤認する元になる。
 ///

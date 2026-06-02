@@ -10,9 +10,6 @@ pub struct LocalStore {
     root: PathBuf,
 }
 
-// これらの公開ヘルパーは library / bundle コマンドの実装が順次消費する。
-// 消費側が未実装の現段階では dead_code 判定となるため、実装が揃うまで明示的に許可する。
-#[allow(dead_code)]
 impl LocalStore {
     const APP_DIR: &'static str = "risundle";
     const LIBRARIES_DIR: &'static str = "libraries";
