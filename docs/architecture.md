@@ -21,7 +21,12 @@ src/
     dummy.rs         維持ライブラリのダミー生成
     identifiers.rs   tree-sitter による識別子抽出
   fs/                汎用ファイル走査 (walk / source / relpath)
-  bundle/            (v1.0 実装予定) Tree-Shaking とコンパイラ連携
+  bundle/            Tree-Shaking の純粋ロジック (コンパイラ起動・IO は commands/bundle.rs)
+    inventory.rs     登録ライブラリの突き合わせ (-I 組立・逆引き・分類・ハッシュ検証)
+    linemarker.rs    プリプロセス出力の linemarker 解析と行の出所追跡
+    detect.rs        logos による識別子検出 (文字列・コメントはスキップ)
+    prune.rs         -M 出力の解析と、集合差による不要ヘッダー特定
+    rewrite.rs       不要行の削除とダミー pragma の #include 復元
 ```
 
 依存は `commands → bundle → library → fs` の内向き一方向で、循環しない。

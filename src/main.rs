@@ -1,3 +1,4 @@
+mod bundle;
 mod cli;
 mod commands;
 mod config;

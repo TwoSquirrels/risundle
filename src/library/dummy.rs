@@ -9,7 +9,9 @@ use anyhow::{Context, Result};
 
 use crate::fs::{relpath, source};
 
-const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
+/// ダミーが埋め込む pragma 名。バンドル時に rewrite が同じ名前で `#include` へ復元するため、
+/// 生成側と復元側で共有する。
+pub const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 
 /// `source_root` 以下の全ファイルについて、同じ相対パスのダミーを `dummy_root` 以下に生成する。
 ///
