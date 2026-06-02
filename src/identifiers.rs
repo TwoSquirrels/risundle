@@ -19,7 +19,7 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use tree_sitter::{Node, Parser};
 
-use crate::relpath;
+use crate::{relpath, walk};
 
 /// 走査の再帰で降りないノード。降りても定義は得られず、むしろ参照名を定義と誤認する元になる。
 ///
@@ -59,39 +59,17 @@ pub fn enumerate(source_root: &Path) -> Result<BTreeMap<String, Vec<String>>> {
         .set_language(&tree_sitter_cpp::LANGUAGE.into())
         .context("C++ パーサの初期化に失敗しました")?;
     let mut files = BTreeMap::new();
-    enumerate_dir(&mut parser, source_root, source_root, &mut files)?;
-    Ok(files)
-}
-
-fn enumerate_dir(
-    parser: &mut Parser,
-    source_root: &Path,
-    current: &Path,
-    files: &mut BTreeMap<String, Vec<String>>,
-) -> Result<()> {
-    let entries = std::fs::read_dir(current)
-        .with_context(|| format!("{} の読み取りに失敗しました", current.display()))?;
-    for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let path = entry.path();
-        if file_type.is_dir() {
-            enumerate_dir(parser, source_root, &path, files)?;
-        } else if file_type.is_file() {
-            let source = std::fs::read(&path)
-                .with_context(|| format!("{} の読み取りに失敗しました", path.display()))?;
-            let names = definitions_in(parser, &source)
-                .with_context(|| format!("{} の識別子抽出に失敗しました", path.display()))?;
-            if names.is_empty() {
-                continue;
-            }
-            let relative = path
-                .strip_prefix(source_root)
-                .expect("read_dir のエントリは source_root 配下にある");
+    walk::walk_files(source_root, |relative, absolute| {
+        let source = std::fs::read(absolute)
+            .with_context(|| format!("{} の読み取りに失敗しました", absolute.display()))?;
+        let names = definitions_in(&mut parser, &source)
+            .with_context(|| format!("{} の識別子抽出に失敗しました", absolute.display()))?;
+        if !names.is_empty() {
             files.insert(relpath::to_slash(relative)?, names);
         }
-    }
-    Ok(())
+        Ok(())
+    })?;
+    Ok(files)
 }
 
 /// 1 ファイルのソースから、定義された識別子名を重複排除・昇順で返す。

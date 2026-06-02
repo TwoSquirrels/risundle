@@ -10,35 +10,17 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::relpath;
+use crate::{relpath, walk};
 
 const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 
 /// `source_root` 以下の全ファイルについて、同じ相対パスのダミーを `dummy_root` 以下に生成する。
 ///
 /// 既存の `dummy_root` を空にする責務は持たない (呼び出し側がディレクトリごと作り直す前提)。
-/// シンボリックリンクは辿らない (循環を避けるため v1.0 では対象外)。
 pub fn generate(source_root: &Path, dummy_root: &Path) -> Result<()> {
-    generate_dir(source_root, source_root, dummy_root)
-}
-
-fn generate_dir(source_root: &Path, current: &Path, dummy_root: &Path) -> Result<()> {
-    let entries = std::fs::read_dir(current)
-        .with_context(|| format!("{} の読み取りに失敗しました", current.display()))?;
-    for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let path = entry.path();
-        if file_type.is_dir() {
-            generate_dir(source_root, &path, dummy_root)?;
-        } else if file_type.is_file() {
-            let relative = path
-                .strip_prefix(source_root)
-                .expect("read_dir のエントリは source_root 配下にある");
-            write_dummy(relative, dummy_root)?;
-        }
-    }
-    Ok(())
+    walk::walk_files(source_root, |relative, _absolute| {
+        write_dummy(relative, dummy_root)
+    })
 }
 
 fn write_dummy(relative: &Path, dummy_root: &Path) -> Result<()> {

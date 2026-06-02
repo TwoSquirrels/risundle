@@ -2,10 +2,12 @@ mod cli;
 mod commands;
 mod config;
 mod dummy;
+mod hash;
 mod identifiers;
 mod local;
 mod relpath;
 mod tags;
+mod walk;
 
 use std::ffi::OsString;
 
