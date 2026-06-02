@@ -19,7 +19,7 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use tree_sitter::{Node, Parser};
 
-use crate::{relpath, walk};
+use crate::{relpath, source};
 
 /// 走査の再帰で降りないノード。降りても定義は得られず、むしろ参照名を定義と誤認する元になる。
 ///
@@ -46,26 +46,30 @@ const NAME_NODES: &[&str] = &[
     "namespace_identifier",
 ];
 
-/// `source_root` 以下の全ファイルを走査し、各ファイルが定義する識別子名を集約する。
+/// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名を集約する。
 ///
 /// キーは `source_root` からの相対パス (`/` 区切り)、値は重複排除・昇順の識別子名一覧。
-/// 定義を一つも持たないファイルは結果に含めない。逆引きの対象にならず、非 C++ ファイルや
-/// インクルードのみのファイル (AC Library の拡張子なし `atcoder/modint` 等) を自然に除外できるため。
+/// 定義を一つも持たないファイル (インクルードのみの拡張子なしファイル等) は結果に含めない。
+/// 対象ファイルの選別は [`source::walk_sources`] が担う。
 ///
-/// シンボリックリンクは辿らない (循環を避けるため v1.0 では対象外)。
-pub fn enumerate(source_root: &Path) -> Result<BTreeMap<String, Vec<String>>> {
+/// ファイルを処理する直前に `on_progress(相対パス)` を呼ぶ。登録に時間がかかるため、呼び出し側が
+/// 進捗を表示できるようにする。
+pub fn enumerate(
+    source_root: &Path,
+    mut on_progress: impl FnMut(&str),
+) -> Result<BTreeMap<String, Vec<String>>> {
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_cpp::LANGUAGE.into())
         .context("C++ パーサの初期化に失敗しました")?;
     let mut files = BTreeMap::new();
-    walk::walk_files(source_root, |relative, absolute| {
-        let source = std::fs::read(absolute)
-            .with_context(|| format!("{} の読み取りに失敗しました", absolute.display()))?;
-        let names = definitions_in(&mut parser, &source)
-            .with_context(|| format!("{} の識別子抽出に失敗しました", absolute.display()))?;
+    source::walk_sources(source_root, |relative, content| {
+        let slug = relpath::to_slash(relative)?;
+        on_progress(&slug);
+        let names = definitions_in(&mut parser, content)
+            .with_context(|| format!("{slug} の識別子抽出に失敗しました"))?;
         if !names.is_empty() {
-            files.insert(relpath::to_slash(relative)?, names);
+            files.insert(slug, names);
         }
         Ok(())
     })?;
@@ -142,7 +146,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let root = temp.path().join("source");
         write_file(&root, "lib.hpp", source);
-        enumerate(&root)
+        enumerate(&root, |_| {})
             .unwrap()
             .remove("lib.hpp")
             .unwrap_or_default()
@@ -158,7 +162,7 @@ mod tests {
             "namespace atcoder { struct segtree {}; }",
         );
 
-        let files = enumerate(&source).unwrap();
+        let files = enumerate(&source, |_| {}).unwrap();
         assert!(files["atcoder/segtree.hpp"].contains(&"segtree".to_owned()));
     }
 
@@ -258,12 +262,12 @@ mod tests {
         // AC Library の拡張子なしファイルのように、インクルードのみで定義を持たない。
         write_file(&source, "atcoder/modint", "#include <atcoder/modint.hpp>");
 
-        assert!(enumerate(&source).unwrap().is_empty());
+        assert!(enumerate(&source, |_| {}).unwrap().is_empty());
     }
 
     #[test]
     fn errors_when_source_root_is_missing() {
         let temp = TempDir::new().unwrap();
-        assert!(enumerate(&temp.path().join("nonexistent")).is_err());
+        assert!(enumerate(&temp.path().join("nonexistent"), |_| {}).is_err());
     }
 }

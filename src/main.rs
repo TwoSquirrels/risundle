@@ -6,6 +6,7 @@ mod hash;
 mod identifiers;
 mod local;
 mod relpath;
+mod source;
 mod tags;
 mod walk;
 

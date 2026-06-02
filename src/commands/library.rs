@@ -44,13 +44,15 @@ fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
     std::fs::create_dir_all(&library_dir)
         .with_context(|| format!("{} の作成に失敗しました", library_dir.display()))?;
 
+    eprintln!("ライブラリ `{id}` を登録しています...");
     dummy::generate(&source_root, &store.dummy_dir(id))?;
 
     // std は識別子情報を持たず更新検知の対象外。それ以外は files と hash の両方を必ず持つ。
     let kind = if id == STD_ID {
         TagsKind::Std
     } else {
-        let files = identifiers::enumerate(&source_root)?;
+        // 識別子抽出はファイル数に比例して時間がかかるため、処理中のファイル名を逐次表示する。
+        let files = identifiers::enumerate(&source_root, |relative| eprintln!("  {relative}"))?;
         let hash = hash::aggregate(&source_root)?;
         TagsKind::Library { hash, files }
     };

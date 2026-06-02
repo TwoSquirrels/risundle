@@ -10,7 +10,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::{relpath, walk};
+use crate::{relpath, source};
 
 const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 
@@ -18,7 +18,7 @@ const DUMMY_PRAGMA: &str = "RISUNDLE_DUMMY";
 ///
 /// 既存の `dummy_root` を空にする責務は持たない (呼び出し側がディレクトリごと作り直す前提)。
 pub fn generate(source_root: &Path, dummy_root: &Path) -> Result<()> {
-    walk::walk_files(source_root, |relative, _absolute| {
+    source::walk_sources(source_root, |relative, _content| {
         write_dummy(relative, dummy_root)
     })
 }
@@ -29,6 +29,10 @@ fn write_dummy(relative: &Path, dummy_root: &Path) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("{} の作成に失敗しました", parent.display()))?;
     }
+    // 復元する include は山括弧で固定する。ダミーが表すのは必ず `-I` で解決される維持ライブラリで
+    // あり、山括弧が C++ の慣習に沿う。ユーザーが引用符 (`"..."`) で書いていても、プリプロセス後の
+    // pragma 行からは元の記法を区別できず (情報が失われる)、かつ山括弧へ正規化しても `-I` 経由で
+    // 同じく解決されるため実害がない。
     let include = relpath::to_slash(relative)?;
     let content = format!("#pragma {DUMMY_PRAGMA} <{include}>\n");
     std::fs::write(&destination, content)

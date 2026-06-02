@@ -7,18 +7,16 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sha2::{Digest, Sha256};
 
-use crate::{relpath, walk};
+use crate::{relpath, source};
 
 /// `root` 以下の全ファイルから集約ハッシュを計算し、`sha256:` プレフィックス付きで返す。
 pub fn aggregate(root: &Path) -> Result<String> {
     let mut entries = Vec::new();
-    walk::walk_files(root, |relative, absolute| {
-        let content = std::fs::read(absolute)
-            .with_context(|| format!("{} の読み取りに失敗しました", absolute.display()))?;
-        entries.push((relpath::to_slash(relative)?, content));
+    source::walk_sources(root, |relative, content| {
+        entries.push((relpath::to_slash(relative)?, content.to_vec()));
         Ok(())
     })?;
     // OS 依存の列挙順に左右されないよう、相対パスで整列して決定的にする。
