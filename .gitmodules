@@ -1,0 +1,12 @@
+[submodule "tests/fixtures/ac-library"]
+	path = tests/fixtures/ac-library
+	url = https://github.com/atcoder/ac-library
+[submodule "tests/fixtures/nyaan"]
+	path = tests/fixtures/nyaan
+	url = https://github.com/NyaanNyaan/library
+[submodule "tests/fixtures/luzhiled"]
+	path = tests/fixtures/luzhiled
+	url = https://github.com/ei1333/library
+[submodule "tests/fixtures/kactl"]
+	path = tests/fixtures/kactl
+	url = https://github.com/kth-competitive-programming/kactl

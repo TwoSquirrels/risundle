@@ -26,3 +26,5 @@ all = { level = "warn", priority = -1 }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+assert_cmd = "2.0"
+predicates = "3.1"
