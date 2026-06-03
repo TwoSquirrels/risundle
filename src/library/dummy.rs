@@ -26,7 +26,7 @@ fn write_dummy(relative: &Path, dummy_root: &Path) -> Result<()> {
     let destination = dummy_root.join(relative);
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("{} の作成に失敗しました", parent.display()))?;
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     // 復元する include は山括弧で固定する。ダミーが表すのは必ず `-I` で解決される維持ライブラリで
     // あり、山括弧が C++ の慣習に沿う。ユーザーが引用符 (`"..."`) で書いていても、プリプロセス後の
@@ -35,7 +35,7 @@ fn write_dummy(relative: &Path, dummy_root: &Path) -> Result<()> {
     let include = relpath::to_slash(relative)?;
     let content = format!("#pragma {DUMMY_PRAGMA} <{include}>\n");
     std::fs::write(&destination, content)
-        .with_context(|| format!("{} の書き込みに失敗しました", destination.display()))
+        .with_context(|| format!("failed to write {}", destination.display()))
 }
 
 #[cfg(test)]

@@ -28,7 +28,7 @@ const STD_ID: &str = "std";
 pub fn run(args: BundleArgs) -> Result<()> {
     let store = LocalStore::discover()?;
     if let Err(err) = cmd_library::auto_setup_std(&store) {
-        eprintln!("警告: 標準ライブラリの自動登録に失敗しました: {err:#}");
+        eprintln!("warning: failed to auto-register the standard library: {err:#}");
     }
 
     let settings = Settings::resolve(&args)?;
@@ -44,7 +44,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     let target = args
         .file
         .canonicalize()
-        .with_context(|| format!("{} を解決できませんでした", args.file.display()))?;
+        .with_context(|| format!("failed to resolve {}", args.file.display()))?;
     let unused = unused_origins(
         &settings,
         &inventory,
@@ -95,7 +95,7 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
 fn warn_std_compiler(compiler: &Path, inventory: &Inventory) {
     let Some(recognized) = inventory.std_compilers() else {
         eprintln!(
-            "警告: 標準ライブラリ (`{STD_ID}`) が未登録です。`risundle library add-std` での登録を推奨します"
+            "warning: the standard library (`{STD_ID}`) is not registered; registering it with `risundle library add-std` is recommended"
         );
         return;
     };
@@ -104,7 +104,7 @@ fn warn_std_compiler(compiler: &Path, inventory: &Inventory) {
     };
     if !recognized.contains(&resolved) {
         eprintln!(
-            "警告: 標準ライブラリ (`{STD_ID}`) は現在のコンパイラ ({}) 向けに登録されていません。`risundle library add-std {}` を検討してください",
+            "warning: the standard library (`{STD_ID}`) is not registered for the current compiler ({}); consider `risundle library add-std {}`",
             resolved.display(),
             compiler.display()
         );
@@ -231,7 +231,7 @@ fn assemble_output(args: &BundleArgs, settings: &Settings, bundled: &str) -> Res
     let mut output = format!("// Bundled with risundle v{}\n", env!("CARGO_PKG_VERSION"));
     if settings.embed {
         let original = std::fs::read_to_string(&args.file)
-            .with_context(|| format!("{} の読み込みに失敗しました", args.file.display()))?;
+            .with_context(|| format!("failed to read {}", args.file.display()))?;
         output.push_str("//\n// --- original source ---\n");
         for line in original.lines() {
             output.push_str("// ");
@@ -251,7 +251,7 @@ fn preprocess(compiler: &Path, compiler_args: &[String], file: &Path) -> Result<
         .args(compiler_args)
         .args(["-x", "c++", "-E", "-C"])
         .arg(file);
-    run_capturing(command, compiler, "プリプロセス")
+    run_capturing(command, compiler, "preprocessing")
 }
 
 /// `$compiler $args -x c++ -M <headers...>` で依存ヘッダーの推移閉包を make ルールとして得る。
@@ -265,23 +265,23 @@ fn make_dependencies(
         .args(compiler_args)
         .args(["-x", "c++", "-M"])
         .args(headers);
-    run_capturing(command, compiler, "依存関係の解決")
+    run_capturing(command, compiler, "dependency resolution")
 }
 
 /// コンパイラを起動し、標準出力を文字列で返す。失敗時は標準エラーを添えてエラーにする。
 fn run_capturing(mut command: Command, compiler: &Path, what: &str) -> Result<String> {
     let output = command.output().with_context(|| {
         format!(
-            "{what}のためコンパイラ {} を起動できませんでした",
+            "failed to launch compiler {} for {what}",
             compiler.display()
         )
     })?;
     if !output.status.success() {
         bail!(
-            "{what}に失敗しました:\n{}",
+            "{what} failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
     String::from_utf8(output.stdout)
-        .with_context(|| format!("{what}の出力が UTF-8 として解釈できませんでした"))
+        .with_context(|| format!("the output of {what} could not be interpreted as UTF-8"))
 }

@@ -59,13 +59,13 @@ pub fn enumerate(
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_cpp::LANGUAGE.into())
-        .context("C++ パーサの初期化に失敗しました")?;
+        .context("failed to initialize the C++ parser")?;
     let mut files = BTreeMap::new();
     source::walk_sources(source_root, |relative, content| {
         let slug = relpath::to_slash(relative)?;
         on_progress(&slug);
         let names = definitions_in(&mut parser, content)
-            .with_context(|| format!("{slug} の識別子抽出に失敗しました"))?;
+            .with_context(|| format!("failed to extract identifiers from {slug}"))?;
         if !names.is_empty() {
             files.insert(slug, names);
         }
@@ -78,7 +78,7 @@ pub fn enumerate(
 fn definitions_in(parser: &mut Parser, source: &[u8]) -> Result<Vec<String>> {
     let tree = parser
         .parse(source, None)
-        .ok_or_else(|| anyhow!("構文解析に失敗しました"))?;
+        .ok_or_else(|| anyhow!("failed to parse the source"))?;
     let mut names = BTreeSet::new();
     collect_definitions(tree.root_node(), source, &mut names);
     Ok(names.into_iter().collect())

@@ -16,7 +16,7 @@ pub fn to_slash(relative: &Path) -> Result<String> {
             continue;
         };
         let name = name.to_str().with_context(|| {
-            format!("ファイル名が UTF-8 ではありません: {}", relative.display())
+            format!("file name is not valid UTF-8: {}", relative.display())
         })?;
         parts.push(name);
     }

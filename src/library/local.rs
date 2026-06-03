@@ -19,7 +19,7 @@ impl LocalStore {
     /// OS 標準のデータディレクトリから `$LOCAL` を解決する。
     pub fn discover() -> Result<Self> {
         let data_local = dirs::data_local_dir()
-            .context("OS のローカルデータディレクトリを特定できませんでした")?;
+            .context("could not determine the OS local data directory")?;
         Ok(Self::with_root(data_local.join(Self::APP_DIR)))
     }
 
@@ -61,7 +61,7 @@ impl LocalStore {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => {
                 return Err(error)
-                    .with_context(|| format!("{} の読み取りに失敗しました", libraries.display()));
+                    .with_context(|| format!("failed to read {}", libraries.display()));
             }
         };
 

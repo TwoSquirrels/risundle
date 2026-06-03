@@ -31,7 +31,7 @@ pub fn walk_sources(root: &Path, mut visit: impl FnMut(&Path, &[u8]) -> Result<(
             return Ok(());
         }
         let content = std::fs::read(absolute)
-            .with_context(|| format!("{} の読み取りに失敗しました", absolute.display()))?;
+            .with_context(|| format!("failed to read {}", absolute.display()))?;
         if !looks_like_text(&content) {
             return Ok(());
         }

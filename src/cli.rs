@@ -4,36 +4,36 @@ use std::path::PathBuf;
 // clap ではトップレベルの必須 positional と optional subcommand を共存させられないため、
 // `library` 管理用の `LibraryCli` とはパーサを分け、エントリポイントで argv を振り分ける。
 
-/// Tree-Shaking 機能付き競プロ用 C++ ソースバンドラー。
+/// A C++ source bundler with tree-shaking for competitive programming.
 ///
-/// サブコマンドを指定しない場合は、指定された C++ ファイルのバンドルを実行する。
+/// When no subcommand is given, bundles the specified C++ file.
 #[derive(Parser, Debug)]
 #[command(
     name = "risundle",
     version,
-    after_help = "ライブラリ管理は `risundle library --help` をご覧ください。"
+    after_help = "For library management, see `risundle library --help`."
 )]
 pub struct BundleArgs {
-    /// 使用するコンパイラのパス
+    /// Path to the compiler to use
     #[arg(short, long)]
     pub compiler: Option<PathBuf>,
 
-    /// Tree-Shaking 対象外として維持するライブラリ ID (複数指定可)
+    /// Library ID to keep out of tree-shaking (can be repeated)
     #[arg(short, long = "keep")]
     pub keep: Vec<String>,
 
-    /// オリジナルコードを先頭にコメントとして埋め込む
+    /// Embed the original source as a comment at the top
     #[arg(short, long)]
     pub embed: bool,
 
-    /// ライブラリ更新のハッシュ検証をスキップする
+    /// Skip hash verification of library updates
     #[arg(short = 'n', long = "no-check")]
     pub no_check: bool,
 
-    /// バンドル対象の C++ ソースファイル
+    /// C++ source file to bundle
     pub file: PathBuf,
 
-    /// コンパイラにそのまま渡す追加オプション
+    /// Extra options passed through to the compiler
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub options: Vec<String>,
 }
@@ -41,7 +41,7 @@ pub struct BundleArgs {
 // エントリポイントで argv の先頭を `risundle library` に差し替えて渡すため、
 // help・usage 上のコマンド名が `risundle library` として表示される。
 
-/// ライブラリの登録・管理を行う
+/// Register and manage libraries
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct LibraryCli {
@@ -51,37 +51,37 @@ pub struct LibraryCli {
 
 #[derive(Subcommand, Debug)]
 pub enum LibraryCommand {
-    /// ライブラリを登録する
+    /// Register a library
     Add {
-        /// ライブラリ ID
+        /// Library ID
         id: String,
-        /// インクルードパス
+        /// Include path
         path: PathBuf,
     },
-    /// 標準ライブラリ (`std`) を登録する (コンパイラのシステム include パスを自動検出)
+    /// Register the standard library (`std`) (auto-detects the compiler's system include paths)
     AddStd {
-        /// システム include パスの検出に用いるコンパイラ (省略時は g++)
+        /// Compiler used to detect system include paths (defaults to g++)
         compiler: Option<PathBuf>,
     },
-    /// ライブラリの登録を削除する
+    /// Remove a library registration
     Delete {
-        /// ライブラリ ID
+        /// Library ID
         id: String,
     },
-    /// ライブラリの更新を反映する (id 省略で全ライブラリ対象)
+    /// Apply library updates (updates all libraries if id is omitted)
     Update {
-        /// ライブラリ ID
+        /// Library ID
         id: Option<String>,
-        /// インクルードパス (省略時は登録済みのパスを使用)
+        /// Include path (uses the registered path if omitted)
         path: Option<PathBuf>,
     },
-    /// 登録済みライブラリの一覧を表示する
+    /// List registered libraries
     List,
-    /// ライブラリの詳細を表示する
+    /// Show library details
     Show {
-        /// ライブラリ ID
+        /// Library ID
         id: String,
-        /// ハッシュや各ファイルの定義識別子まで含めて表示する
+        /// Include the hash and per-file defined identifiers
         #[arg(short, long)]
         verbose: bool,
     },

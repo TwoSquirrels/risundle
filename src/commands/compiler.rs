@@ -22,23 +22,23 @@ pub fn resolve(compiler: &Path) -> Result<PathBuf> {
     let located = if compiler.components().count() > 1 {
         let absolute = std::path::absolute(compiler).with_context(|| {
             format!(
-                "コンパイラ {} の絶対パス化に失敗しました",
+                "failed to make an absolute path for compiler {}",
                 compiler.display()
             )
         })?;
         if !absolute.is_file() {
-            bail!("コンパイラ {} が見つかりません", compiler.display());
+            bail!("compiler {} not found", compiler.display());
         }
         absolute
     } else {
         let path_var = std::env::var_os("PATH").unwrap_or_default();
         find_in_path(compiler, &path_var)
-            .ok_or_else(|| anyhow!("コンパイラ {} が PATH に見つかりません", compiler.display()))?
+            .ok_or_else(|| anyhow!("compiler {} not found in PATH", compiler.display()))?
     };
     // PATH のエントリが相対 (例: `.`) のこともあるため、最終的に絶対パスへ揃える。
     std::path::absolute(&located).with_context(|| {
         format!(
-            "コンパイラ {} の絶対パス化に失敗しました",
+            "failed to make an absolute path for compiler {}",
             compiler.display()
         )
     })

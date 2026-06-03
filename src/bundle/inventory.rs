@@ -90,11 +90,11 @@ impl Inventory {
                 continue; // std は検証対象外
             };
             let actual = hash::aggregate(&lib.path).with_context(|| {
-                format!("ライブラリ `{}` のハッシュ再計算に失敗しました", lib.id)
+                format!("failed to recompute the hash of library `{}`", lib.id)
             })?;
             if &actual != expected {
                 bail!(
-                    "ライブラリ `{0}` は登録後に変更されています。`risundle library update {0}` で更新してください",
+                    "library `{0}` has changed since registration; run `risundle library update {0}` to update it",
                     lib.id
                 );
             }

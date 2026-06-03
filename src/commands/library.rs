@@ -28,19 +28,19 @@ pub fn run(command: LibraryCommand) -> Result<()> {
 fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
     validate_id(id)?;
     if id == STD_ID {
-        bail!("標準ライブラリは `risundle library add-std` で登録してください");
+        bail!("register the standard library with `risundle library add-std`");
     }
     if store.is_registered(id) {
         bail!(
-            "ライブラリ `{id}` は既に登録されています。更新するには `risundle library update {id}` を使ってください"
+            "library `{id}` is already registered; use `risundle library update {id}` to update it"
         );
     }
     let source_root = resolve_source_root(path)?;
 
-    eprintln!("ライブラリ `{id}` を登録しています...");
+    eprintln!("registering library `{id}`...");
     register_library(store, id, &source_root)?;
 
-    println!("ライブラリ `{id}` を登録しました");
+    println!("registered library `{id}`");
     Ok(())
 }
 
@@ -60,12 +60,12 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
         compilers.push(resolved);
     }
 
-    eprintln!("標準ライブラリを登録しています...");
+    eprintln!("registering the standard library...");
     let discovered = discover_all(&compilers)?;
     register_std(store, &discovered)?;
 
     println!(
-        "標準ライブラリ (`{STD_ID}`) を {} 個のコンパイラ向けに登録しました",
+        "registered the standard library (`{STD_ID}`) for {} compiler(s)",
         compilers.len()
     );
     Ok(())
@@ -89,7 +89,7 @@ pub fn auto_setup_std(store: &LocalStore) -> Result<()> {
         return Ok(());
     }
     eprintln!(
-        "初回セットアップ: 標準ライブラリを登録しています ({})...",
+        "initial setup: registering the standard library ({})...",
         compilers
             .iter()
             .filter_map(|c| c.file_name()?.to_str())
@@ -99,7 +99,7 @@ pub fn auto_setup_std(store: &LocalStore) -> Result<()> {
     let discovered = discover_all(&compilers)?;
     register_std(store, &discovered)?;
     eprintln!(
-        "標準ライブラリ (`{STD_ID}`) を {} 個のコンパイラ向けに自動登録しました",
+        "auto-registered the standard library (`{STD_ID}`) for {} compiler(s)",
         compilers.len()
     );
     Ok(())
@@ -152,12 +152,12 @@ fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> R
         .flat_map(|(_, roots)| roots.first())
         .next()
         .cloned()
-        .context("システム include パスが空です")?;
+        .context("the system include paths are empty")?;
     recreate_library_dir(store, STD_ID)?;
     let dummy_dir = store.dummy_dir(STD_ID);
     for (compiler, roots) in discovered {
         eprintln!(
-            "  {} のシステム include をダミー化しています",
+            "  generating dummies for the system includes of {}",
             compiler.display()
         );
         for root in roots {
@@ -177,10 +177,10 @@ fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
     let library_dir = store.library_dir(id);
     if library_dir.exists() {
         std::fs::remove_dir_all(&library_dir)
-            .with_context(|| format!("{} の削除に失敗しました", library_dir.display()))?;
+            .with_context(|| format!("failed to remove {}", library_dir.display()))?;
     }
     std::fs::create_dir_all(&library_dir)
-        .with_context(|| format!("{} の作成に失敗しました", library_dir.display()))
+        .with_context(|| format!("failed to create {}", library_dir.display()))
 }
 
 /// `-v` 付きプリプロセスの標準エラーに出る探索リストを解析する。`CPATH` 等の環境変数は探索パスを
@@ -195,10 +195,10 @@ fn discover_system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .with_context(|| format!("コンパイラ {} を起動できませんでした", compiler.display()))?;
+        .with_context(|| format!("failed to launch compiler {}", compiler.display()))?;
     if !output.status.success() {
         bail!(
-            "コンパイラ {} のシステム include パス検出に失敗しました:\n{}",
+            "failed to detect the system include paths of compiler {}:\n{}",
             compiler.display(),
             String::from_utf8_lossy(&output.stderr)
         );
@@ -206,7 +206,7 @@ fn discover_system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
     let roots = parse_search_dirs(&String::from_utf8_lossy(&output.stderr));
     if roots.is_empty() {
         bail!(
-            "コンパイラ {} のシステム include パスを検出できませんでした",
+            "could not detect any system include paths for compiler {}",
             compiler.display()
         );
     }
@@ -233,7 +233,7 @@ fn parse_search_dirs(verbose_output: &str) -> Vec<PathBuf> {
 /// 絶対パス化と存在確認を兼ねる。
 fn resolve_source_root(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
-        .with_context(|| format!("インクルードパス {} を解決できませんでした", path.display()))
+        .with_context(|| format!("failed to resolve include path {}", path.display()))
 }
 
 /// ライブラリ ID がパス要素として安全か検証する。
@@ -242,14 +242,14 @@ fn resolve_source_root(path: &Path) -> Result<PathBuf> {
 /// 含む ID を許すと意図しない場所を読み書きしてしまう。フェイルファストで早期に弾く。
 fn validate_id(id: &str) -> Result<()> {
     if id.is_empty() || id == "." || id == ".." || id.contains('/') || id.contains('\\') {
-        bail!("ライブラリ ID `{id}` は使えません (空、`.`/`..`、パス区切りを含む ID は不可です)");
+        bail!("library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)");
     }
     Ok(())
 }
 
 fn ensure_registered(store: &LocalStore, id: &str) -> Result<()> {
     if !store.is_registered(id) {
-        bail!("ライブラリ `{id}` は登録されていません");
+        bail!("library `{id}` is not registered");
     }
     Ok(())
 }
@@ -259,9 +259,9 @@ fn delete(store: &LocalStore, id: &str) -> Result<()> {
     ensure_registered(store, id)?;
     let library_dir = store.library_dir(id);
     std::fs::remove_dir_all(&library_dir)
-        .with_context(|| format!("{} の削除に失敗しました", library_dir.display()))?;
+        .with_context(|| format!("failed to remove {}", library_dir.display()))?;
 
-    println!("ライブラリ `{id}` の登録を削除しました");
+    println!("removed registration of library `{id}`");
     Ok(())
 }
 
@@ -273,7 +273,7 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
         None => {
             let ids = store.library_ids()?;
             if ids.is_empty() {
-                println!("更新するライブラリがありません");
+                println!("no libraries to update");
                 return Ok(());
             }
             for id in ids {
@@ -291,11 +291,11 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     ensure_registered(store, id)?;
     let tags = Tags::load(&store.tags_json(id))?;
 
-    eprintln!("ライブラリ `{id}` を更新しています...");
+    eprintln!("updating library `{id}`...");
     match tags.kind {
         TagsKind::Std { compilers } => {
             if path.is_some() {
-                bail!("標準ライブラリにパスは指定できません (コンパイラから自動検出します)");
+                bail!("a path cannot be specified for the standard library (it is auto-detected from the compiler)");
             }
             let discovered = discover_all(&compilers)?;
             register_std(store, &discovered)?;
@@ -309,14 +309,14 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
         }
     }
 
-    println!("ライブラリ `{id}` を更新しました");
+    println!("updated library `{id}`");
     Ok(())
 }
 
 fn list(store: &LocalStore) -> Result<()> {
     let ids = store.library_ids()?;
     if ids.is_empty() {
-        println!("登録済みのライブラリはありません");
+        println!("no libraries are registered");
         return Ok(());
     }
     for id in ids {
@@ -331,19 +331,19 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     ensure_registered(store, id)?;
     let tags = Tags::load(&store.tags_json(id))?;
     println!("ID:   {id}");
-    println!("パス: {}", tags.path.display());
+    println!("path: {}", tags.path.display());
     match &tags.kind {
         TagsKind::Std { compilers } => {
-            println!("種別: 標準ライブラリ (識別子情報・更新検知なし)");
-            println!("認識コンパイラ: {} 個", compilers.len());
+            println!("kind: standard library (no identifier info or update detection)");
+            println!("recognized compilers: {}", compilers.len());
             for compiler in compilers {
                 println!("  {}", compiler.display());
             }
         }
         TagsKind::Library { hash, files } => {
-            println!("定義識別子を持つファイル: {} 件", files.len());
+            println!("files with defined identifiers: {}", files.len());
             if verbose {
-                println!("ハッシュ: {hash}");
+                println!("hash: {hash}");
                 for (file, names) in files {
                     println!("  {file}: {}", names.join(", "));
                 }

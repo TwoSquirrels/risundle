@@ -20,7 +20,7 @@ where
     F: FnMut(&Path, &Path) -> Result<()>,
 {
     let entries = std::fs::read_dir(current)
-        .with_context(|| format!("{} の読み取りに失敗しました", current.display()))?;
+        .with_context(|| format!("failed to read {}", current.display()))?;
     for entry in entries {
         let entry = entry?;
         let file_type = entry.file_type()?;
@@ -30,7 +30,7 @@ where
         } else if file_type.is_file() {
             let relative = path
                 .strip_prefix(root)
-                .expect("read_dir のエントリは root 配下にある");
+                .expect("read_dir entries are under root");
             visit(relative, &path)?;
         }
     }

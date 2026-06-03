@@ -41,19 +41,19 @@ impl Tags {
 
     pub fn to_json(&self) -> Result<String> {
         serde_json::to_string_pretty(&RawTags::from(self))
-            .context("tags.json のシリアライズに失敗しました")
+            .context("failed to serialize tags.json")
     }
 
     pub fn load(path: &Path) -> Result<Self> {
         let json = std::fs::read_to_string(path)
-            .with_context(|| format!("{} の読み込みに失敗しました", path.display()))?;
-        Self::from_json(&json).with_context(|| format!("{} の解釈に失敗しました", path.display()))
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        Self::from_json(&json).with_context(|| format!("failed to parse {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
         let json = self.to_json()?;
         std::fs::write(path, json)
-            .with_context(|| format!("{} の書き込みに失敗しました", path.display()))
+            .with_context(|| format!("failed to write {}", path.display()))
     }
 }
 
@@ -78,7 +78,7 @@ impl TryFrom<RawTags> for Tags {
     fn try_from(raw: RawTags) -> Result<Self> {
         if raw.schema_version != CURRENT_SCHEMA_VERSION {
             bail!(
-                "tags.json の schema_version {} は非対応です (対応: {})。`risundle library update` で再生成してください",
+                "tags.json schema_version {} is not supported (supported: {}); regenerate it with `risundle library update`",
                 raw.schema_version,
                 CURRENT_SCHEMA_VERSION
             );
@@ -88,7 +88,7 @@ impl TryFrom<RawTags> for Tags {
             (None, Some(hash), Some(files)) => TagsKind::Library { hash, files },
             _ => {
                 bail!(
-                    "tags.json の種別が不正です (std は compilers のみ、通常ライブラリは hash と files の両方が必要です)"
+                    "invalid tags.json kind (std requires only compilers; a regular library requires both hash and files)"
                 );
             }
         };
