@@ -17,7 +17,7 @@ use crate::bundle::inventory::Inventory;
 use crate::bundle::linemarker::{Line, Tracker};
 use crate::bundle::{detect, prune, rewrite};
 use crate::cli::BundleArgs;
-use crate::commands::compiler;
+use crate::commands::{compiler, library as cmd_library};
 use crate::config;
 use crate::fs::relpath;
 use crate::library::local::LocalStore;
@@ -27,6 +27,9 @@ const STD_ID: &str = "std";
 
 pub fn run(args: BundleArgs) -> Result<()> {
     let store = LocalStore::discover()?;
+    if let Err(err) = cmd_library::auto_setup_std(&store) {
+        eprintln!("警告: 標準ライブラリの自動登録に失敗しました: {err:#}");
+    }
 
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;

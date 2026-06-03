@@ -71,7 +71,40 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-/// 登録済み `std` の認識コンパイラ集合を返す。未登録なら空。
+const AUTO_DETECT_CANDIDATES: &[&str] = &["g++", "clang++"];
+
+/// std が未登録なら、PATH 内の候補コンパイラ (g++/clang++) を自動検出して登録する。
+///
+/// バンドル実行の初回セットアップ用。コンパイラが 1 つも見つからなければ何もしない
+/// (後段の `warn_std_compiler` が案内する)。既に登録済みならスキップする。
+pub fn auto_setup_std(store: &LocalStore) -> Result<()> {
+    if store.is_registered(STD_ID) {
+        return Ok(());
+    }
+    let compilers: Vec<PathBuf> = AUTO_DETECT_CANDIDATES
+        .iter()
+        .filter_map(|name| resolve_compiler(Path::new(name)).ok())
+        .collect();
+    if compilers.is_empty() {
+        return Ok(());
+    }
+    eprintln!(
+        "初回セットアップ: 標準ライブラリを登録しています ({})...",
+        compilers
+            .iter()
+            .filter_map(|c| c.file_name()?.to_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let discovered = discover_all(&compilers)?;
+    register_std(store, &discovered)?;
+    eprintln!(
+        "標準ライブラリ (`{STD_ID}`) を {} 個のコンパイラ向けに自動登録しました",
+        compilers.len()
+    );
+    Ok(())
+}
+
 fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     if !store.is_registered(STD_ID) {
         return Ok(Vec::new());
@@ -82,7 +115,6 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     }
 }
 
-/// 各コンパイラについてシステム include パスを検出し、`(コンパイラ, ルート群)` の組を返す。
 fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
     compilers
         .iter()
@@ -141,7 +173,6 @@ fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> R
     .save(&store.tags_json(STD_ID))
 }
 
-/// `id` のライブラリディレクトリを空の状態から作り直す。
 fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
     let library_dir = store.library_dir(id);
     if library_dir.exists() {
@@ -152,8 +183,6 @@ fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
         .with_context(|| format!("{} の作成に失敗しました", library_dir.display()))
 }
 
-/// `compiler` のシステム include 探索パスを検出する。
-///
 /// `-v` 付きプリプロセスの標準エラーに出る探索リストを解析する。`CPATH` 等の環境変数は探索パスを
 /// 汚染する (ユーザーのライブラリが紛れる) ため取り除き、コンパイラ本来のシステム dir だけを得る。
 fn discover_system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
@@ -218,7 +247,6 @@ fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
-/// ライブラリが登録済みであることを確認する。delete / update / show が処理前に呼ぶ。
 fn ensure_registered(store: &LocalStore, id: &str) -> Result<()> {
     if !store.is_registered(id) {
         bail!("ライブラリ `{id}` は登録されていません");
@@ -256,8 +284,8 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
     }
 }
 
-/// 1 つのライブラリを再生成する。通常ライブラリは `path` 省略時に保存済みパスを再利用し、`std` は
-/// 保存済みコンパイラからシステム include パスを再検出する。
+/// 通常ライブラリは `path` 省略時に保存済みパスを再利用し、`std` は保存済みコンパイラからシステム
+/// include パスを再検出する。
 fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
