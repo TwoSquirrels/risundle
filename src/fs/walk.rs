@@ -22,9 +22,12 @@ where
     let entries = std::fs::read_dir(current)
         .with_context(|| format!("failed to read {}", current.display()))?;
     for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
+        let entry =
+            entry.with_context(|| format!("failed to read an entry in {}", current.display()))?;
         let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to read the file type of {}", path.display()))?;
         if file_type.is_dir() {
             walk_dir(root, &path, visit)?;
         } else if file_type.is_file() {

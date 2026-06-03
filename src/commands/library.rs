@@ -200,7 +200,7 @@ fn discover_system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
         bail!(
             "failed to detect the system include paths of compiler {}:\n{}",
             compiler.display(),
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stderr).trim_end()
         );
     }
     let roots = parse_search_dirs(&String::from_utf8_lossy(&output.stderr));

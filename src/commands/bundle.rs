@@ -279,7 +279,7 @@ fn run_capturing(mut command: Command, compiler: &Path, what: &str) -> Result<St
     if !output.status.success() {
         bail!(
             "{what} failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stderr).trim_end()
         );
     }
     String::from_utf8(output.stdout)
