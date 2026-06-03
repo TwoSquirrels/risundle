@@ -1,10 +1,15 @@
 [package]
 name = "risundle"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 authors = ["TwoSquirrels"]
 description = "A C++ bundler with tree-shaking for competitive programming"
 license = "MIT"
+repository = "https://github.com/TwoSquirrels/risundle"
+readme = "README.md"
+keywords = ["competitive", "cpp", "bundler", "tree-shaking", "atcoder"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["tests/fixtures", "docs", "rust-toolchain.toml", "rustfmt.toml"]
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
