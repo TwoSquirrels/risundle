@@ -1,7 +1,3 @@
-// `.risundlerc.toml` の読み取り機構。バンドルコマンドの実装が消費するまで
-// 公開項目は未使用となるため、消費側が揃うまで dead_code を明示的に許可する。
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};

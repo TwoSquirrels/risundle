@@ -28,22 +28,18 @@ impl LocalStore {
         Self { root: root.into() }
     }
 
-    /// `$LOCAL/libraries`
     pub fn libraries_dir(&self) -> PathBuf {
         self.root.join(Self::LIBRARIES_DIR)
     }
 
-    /// `$LOCAL/libraries/<id>`
     pub fn library_dir(&self, id: &str) -> PathBuf {
         self.libraries_dir().join(id)
     }
 
-    /// `$LOCAL/libraries/<id>/tags.json`
     pub fn tags_json(&self, id: &str) -> PathBuf {
         self.library_dir(id).join(Self::TAGS_FILE)
     }
 
-    /// `$LOCAL/libraries/<id>/dummy`
     pub fn dummy_dir(&self, id: &str) -> PathBuf {
         self.library_dir(id).join(Self::DUMMY_DIR)
     }

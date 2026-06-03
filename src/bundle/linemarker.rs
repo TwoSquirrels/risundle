@@ -3,10 +3,6 @@
 //! 「`<file>` 由来部分だけを見る」「ヘッダー単位で要否を判断する」工程の土台にする。
 //!
 //! [linemarker]: https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html
-//!
-//! バンドルのパイプライン (識別子検出・置換) が消費するまで未使用となるため、消費側が揃うまで
-//! dead_code を明示的に許可する。
-#![allow(dead_code)]
 
 /// 1 本の linemarker。`# <line> "<file>" <flags...>` を解釈した結果。
 ///
