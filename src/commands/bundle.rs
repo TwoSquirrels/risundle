@@ -17,7 +17,9 @@ use crate::bundle::inventory::Inventory;
 use crate::bundle::linemarker::{Line, Tracker};
 use crate::bundle::{detect, prune, rewrite};
 use crate::cli::BundleArgs;
+use crate::commands::compiler;
 use crate::config;
+use crate::fs::relpath;
 use crate::library::local::LocalStore;
 
 /// `std` として扱うライブラリ ID。未登録なら警告する。
@@ -25,14 +27,10 @@ const STD_ID: &str = "std";
 
 pub fn run(args: BundleArgs) -> Result<()> {
     let store = LocalStore::discover()?;
-    if !store.is_registered(STD_ID) {
-        eprintln!(
-            "警告: 標準ライブラリ (`{STD_ID}`) が未登録です。`risundle library add {STD_ID} <path>` での登録を推奨します"
-        );
-    }
 
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;
+    warn_std_compiler(&settings.compiler, &inventory);
     if !args.no_check {
         inventory.verify()?;
     }
@@ -40,11 +38,74 @@ pub fn run(args: BundleArgs) -> Result<()> {
     let compiler_args = compiler_args(&settings, &inventory);
     let preprocessed = preprocess(&settings.compiler, &compiler_args, &args.file)?;
 
-    let unused = unused_origins(&args, &settings, &inventory, &compiler_args, &preprocessed)?;
-    let bundled = rewrite::rewrite(&preprocessed, |origin| unused.contains(origin));
+    let target = args
+        .file
+        .canonicalize()
+        .with_context(|| format!("{} を解決できませんでした", args.file.display()))?;
+    let unused = unused_origins(
+        &settings,
+        &inventory,
+        &compiler_args,
+        &preprocessed,
+        &target,
+    )?;
+    let target_dir = target.parent();
+    let bundled = rewrite::rewrite(
+        &preprocessed,
+        |origin| unused.contains(origin),
+        |origin| display_origin(origin, &inventory, target_dir),
+    );
 
     print!("{}", assemble_output(&args, &settings, &bundled)?);
     Ok(())
+}
+
+/// `#line` に出すファイル名を、ローカル絶対パスではなくライブラリ ID 基準の相対パスへ整える。
+///
+/// ライブラリ配下なら `<id>/<相対>`、入力ファイルと同じディレクトリ木の下ならそこからの相対、いずれ
+/// でもなければファイル名のみへ落とす。提出物にホームディレクトリ名などローカルの絶対パスを残さない
+/// のが目的。`<built-in>` 等 realpath 化できない出所はそのまま残す (デバッグの手掛かりとして無害)。
+fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>) -> String {
+    let Ok(canonical) = Path::new(origin).canonicalize() else {
+        return origin.to_owned();
+    };
+    if let Some(relative) = inventory.library_relative(&canonical) {
+        return relative;
+    }
+    if let Some(relative) = target_dir
+        .and_then(|dir| canonical.strip_prefix(dir).ok())
+        .and_then(|rel| relpath::to_slash(rel).ok())
+    {
+        return relative;
+    }
+    canonical
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| origin.to_owned())
+}
+
+/// std がバンドル対象のコンパイラ向けに登録されているかを確認し、外れていれば警告する。
+///
+/// std 未登録、または現在のコンパイラが std の認識集合に無い場合に `add-std` を促す。コンパイラは
+/// 登録時と同じ規則で絶対パスへ正規化してから照合し、`g++` と `/usr/bin/g++` の表記揺れで誤警告
+/// しないようにする。解決できないコンパイラは照合せず (バンドル本体が改めて報告する)。
+fn warn_std_compiler(compiler: &Path, inventory: &Inventory) {
+    let Some(recognized) = inventory.std_compilers() else {
+        eprintln!(
+            "警告: 標準ライブラリ (`{STD_ID}`) が未登録です。`risundle library add-std` での登録を推奨します"
+        );
+        return;
+    };
+    let Ok(resolved) = compiler::resolve(compiler) else {
+        return;
+    };
+    if !recognized.contains(&resolved) {
+        eprintln!(
+            "警告: 標準ライブラリ (`{STD_ID}`) は現在のコンパイラ ({}) 向けに登録されていません。`risundle library add-std {}` を検討してください",
+            resolved.display(),
+            compiler.display()
+        );
+    }
 }
 
 /// `.risundlerc.toml` の設定に CLI オプションを重ねた実効設定。CLI で明示された項目が設定 (なければ
@@ -88,17 +149,13 @@ fn compiler_args(settings: &Settings, inventory: &Inventory) -> Vec<String> {
 
 /// 出力中の不要ヘッダーを、その linemarker パス文字列の集合として特定する。
 fn unused_origins(
-    args: &BundleArgs,
     settings: &Settings,
     inventory: &Inventory,
     compiler_args: &[String],
     preprocessed: &str,
+    target: &Path,
 ) -> Result<BTreeSet<String>> {
-    let target = args
-        .file
-        .canonicalize()
-        .with_context(|| format!("{} を解決できませんでした", args.file.display()))?;
-    let (target_code, pruneable) = scan_origins(preprocessed, &target, inventory);
+    let (target_code, pruneable) = scan_origins(preprocessed, target, inventory);
 
     // 出力に現れた維持指定外ライブラリのファイル群。これが逆引きの母集合かつ不要判定の候補になる。
     let present: BTreeSet<PathBuf> = pruneable.values().cloned().collect();

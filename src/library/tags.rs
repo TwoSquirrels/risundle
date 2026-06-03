@@ -17,11 +17,15 @@ pub struct Tags {
 
 /// ライブラリ種別ごとに保持する情報。
 ///
-/// `std` は識別子情報を持たず更新検知の対象外のため `hash`・`files` を持たない。
+/// `std` は識別子情報を持たず更新検知の対象外のため `hash`・`files` を持たない。代わりに、システム
+/// include パスの自動検出に用いた `compilers` (正規化済み絶対パスの集合) を保持する。複数コンパイラの
+/// std を 1 つのダミーツリーへ統合するため集合で持ち、`update` 時の再検出とバンドル時の整合警告に使う。
 /// この直和により「`std`」と「識別子 0 件のライブラリ」を型レベルで区別する。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagsKind {
-    Std,
+    Std {
+        compilers: Vec<PathBuf>,
+    },
     Library {
         hash: String,
         // 出力順を安定させるため BTreeMap を使う (HashMap だと tags.json の diff が毎回ぶれる)。
@@ -53,12 +57,15 @@ impl Tags {
     }
 }
 
-/// `tags.json` の生のシリアライズ表現。`std` では `hash`・`files` を省略する。
+/// `tags.json` の生のシリアライズ表現。`std` は `compiler` のみ、通常ライブラリは `hash`・`files` を
+/// 持つ。種別ごとに排他なので、どちらの組が揃っているかで [`TagsKind`] を復元する。
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawTags {
     schema_version: u32,
     path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compilers: Option<Vec<PathBuf>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,11 +83,13 @@ impl TryFrom<RawTags> for Tags {
                 CURRENT_SCHEMA_VERSION
             );
         }
-        let kind = match (raw.hash, raw.files) {
-            (None, None) => TagsKind::Std,
-            (Some(hash), Some(files)) => TagsKind::Library { hash, files },
-            (Some(_), None) | (None, Some(_)) => {
-                bail!("tags.json の hash と files は、両方揃えるか両方とも省略する必要があります");
+        let kind = match (raw.compilers, raw.hash, raw.files) {
+            (Some(compilers), None, None) => TagsKind::Std { compilers },
+            (None, Some(hash), Some(files)) => TagsKind::Library { hash, files },
+            _ => {
+                bail!(
+                    "tags.json の種別が不正です (std は compilers のみ、通常ライブラリは hash と files の両方が必要です)"
+                );
             }
         };
         Ok(Self {
@@ -92,13 +101,14 @@ impl TryFrom<RawTags> for Tags {
 
 impl From<&Tags> for RawTags {
     fn from(tags: &Tags) -> Self {
-        let (hash, files) = match &tags.kind {
-            TagsKind::Std => (None, None),
-            TagsKind::Library { hash, files } => (Some(hash.clone()), Some(files.clone())),
+        let (compilers, hash, files) = match &tags.kind {
+            TagsKind::Std { compilers } => (Some(compilers.clone()), None, None),
+            TagsKind::Library { hash, files } => (None, Some(hash.clone()), Some(files.clone())),
         };
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
             path: tags.path.clone(),
+            compilers,
             hash,
             files,
         }
@@ -124,12 +134,21 @@ mod tests {
         }
     }
 
+    fn std_tags() -> Tags {
+        Tags {
+            path: PathBuf::from("/usr/include/c++/12"),
+            kind: TagsKind::Std {
+                compilers: vec![
+                    PathBuf::from("/usr/bin/g++"),
+                    PathBuf::from("/usr/bin/clang++"),
+                ],
+            },
+        }
+    }
+
     #[test]
     fn std_round_trips_through_json() {
-        let tags = Tags {
-            path: PathBuf::from("/usr/include/c++/12"),
-            kind: TagsKind::Std,
-        };
+        let tags = std_tags();
         assert_eq!(Tags::from_json(&tags.to_json().unwrap()).unwrap(), tags);
     }
 
@@ -141,14 +160,10 @@ mod tests {
 
     #[test]
     fn std_omits_hash_and_files_in_output() {
-        let json = Tags {
-            path: PathBuf::from("/usr/include/c++/12"),
-            kind: TagsKind::Std,
-        }
-        .to_json()
-        .unwrap();
+        let json = std_tags().to_json().unwrap();
         assert!(!json.contains("hash"));
         assert!(!json.contains("files"));
+        assert!(json.contains("compilers"));
     }
 
     #[test]
@@ -167,16 +182,28 @@ mod tests {
 
     #[test]
     fn parses_spec_std_example() {
-        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12" }"#;
+        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
         let tags = Tags::from_json(json).unwrap();
-        assert_eq!(tags.kind, TagsKind::Std);
+        assert_eq!(
+            tags.kind,
+            TagsKind::Std {
+                compilers: vec![PathBuf::from("/usr/bin/g++")]
+            }
+        );
     }
 
     #[test]
     fn unsupported_schema_version_is_rejected() {
-        let json = r#"{ "schema_version": 2, "path": "/usr/include/c++/12" }"#;
+        let json = r#"{ "schema_version": 2, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
         let error = Tags::from_json(json).unwrap_err();
         assert!(error.to_string().contains("schema_version"));
+    }
+
+    #[test]
+    fn std_without_compilers_is_rejected() {
+        // compilers も hash/files も無い旧 std 形式は不正 (add-std での再登録が必要)。
+        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12" }"#;
+        assert!(Tags::from_json(json).is_err());
     }
 
     #[test]
@@ -188,6 +215,13 @@ mod tests {
     #[test]
     fn files_without_hash_is_rejected() {
         let json = r#"{ "schema_version": 1, "path": "/p", "files": {} }"#;
+        assert!(Tags::from_json(json).is_err());
+    }
+
+    #[test]
+    fn std_with_hash_is_rejected() {
+        // std (compilers) と通常ライブラリ (hash/files) の情報が混在する形式は不正。
+        let json = r#"{ "schema_version": 1, "path": "/p", "compilers": ["/usr/bin/g++"], "hash": "sha256:abc" }"#;
         assert!(Tags::from_json(json).is_err());
     }
 

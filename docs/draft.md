@@ -19,18 +19,22 @@
 ## サブコマンド `library`
 
 - `risundle library add <id> <path>` (ライブラリの登録)
+    - `<id>` が `std` の場合はエラー (標準ライブラリは `add-std` で登録する)。
     - `$LOCAL/libraries/<id>/tags.json` が既に存在する場合はエラー。
     - `<path>` をインクルードパスとして、それ以下の全ファイルについて、その中身を例えば `atcoder/modint` なら `#pragma RISUNDLE_DUMMY <atcoder/modint>` にしたファイルで、ディレクトリ構造はそのまま `$LOCAL/libraries/<id>/dummy/` 以下に格納する。
-    - `<path>` を `$LOCAL/libraries/<id>/tags.json` に保存。`<id>` が `std` でない場合は、[tree-sitter](https://crates.io/crates/tree-sitter) (C++ 文法 [tree-sitter-cpp](https://crates.io/crates/tree-sitter-cpp) と [tree-sitter-tags](https://crates.io/crates/tree-sitter-tags)) で抽出したファイル毎の定義識別子一覧と、`<path>` 以下の内容から計算した集約ハッシュも合わせて保存。
+    - `<path>` を `$LOCAL/libraries/<id>/tags.json` に保存。あわせて、[tree-sitter](https://crates.io/crates/tree-sitter) (C++ 文法 [tree-sitter-cpp](https://crates.io/crates/tree-sitter-cpp) と [tree-sitter-tags](https://crates.io/crates/tree-sitter-tags)) で抽出したファイル毎の定義識別子一覧と、`<path>` 以下の内容から計算した集約ハッシュも保存。
+- `risundle library add-std [<compiler>]` (標準ライブラリの登録)
+    - `<compiler>` (省略時 `g++`) を実体の絶対パスへ正規化し、`<compiler> -E -x c++ -v -` のシステム include 探索パス一覧を検出する (`CPATH` 等の環境変数は除去して汚染を防ぐ)。
+    - 既に `std` が登録済みなら、その認識コンパイラ集合へ `<compiler>` を加える (加算式)。集合全コンパイラの探索パスを 1 つの `$LOCAL/libraries/std/dummy/` ツリーへ統合してダミー化する。
+    - `tags.json` には代表パス (`path`) と認識コンパイラ集合 (`compilers`、絶対パス) を保存。識別子一覧・集約ハッシュは持たない。
 - `risundle library delete <id>` (ライブラリの登録削除)
     - `$LOCAL/libraries/<id>/tags.json` が存在しない場合はエラー。
     - `$LOCAL/libraries/<id>/` を削除。
 - `risundle library update [<id> [<path>]]` (ライブラリの更新対応)
     - `<id>` が指定されている場合:
         - `$LOCAL/libraries/<id>/tags.json` が存在しない場合はエラー。
-        - `<path>` が指定されていない場合は `$LOCAL/libraries/<id>/tags.json` から参照。
-        -  `$LOCAL/libraries/<id>/` を削除。
-        - `risundle library add <id> <path>` と同じことをし、再生成。
+        - `std` の場合は、`tags.json` の認識コンパイラ集合からシステム include を再検出し、統合ツリーを作り直す (`<path>` 指定は不可)。
+        - それ以外は、`<path>` 省略時に `$LOCAL/libraries/<id>/tags.json` から参照し、`$LOCAL/libraries/<id>/` を削除して `risundle library add <id> <path>` と同じことをし再生成。
     - `<id>` が指定されていない場合:
         - `$LOCAL/libraries/*/tags.json` をリストアップし、それぞれのディレクトリ名についてそれを `<id>` として「`<id>` が指定されている場合」を実行。
 - `risundle library list` (ライブラリ一覧)
@@ -43,7 +47,7 @@
 ## メインコマンド
 
 - `risundle [-c <path> | --compiler=<path>] [-k <id> | --keep=<id>]... [-e | --embed] [-n | --no-check] [--] <file> [<options>]` (バンドル実行)
-    - `$LOCAL/libraries/std/tags.json` が存在しない場合、警告を出力。
+    - `std` が未登録、または登録済みでも `$compiler` (絶対パスへ正規化) が `std` の認識コンパイラ集合に無い場合、`add-std` を促す警告を出力 (強制はしない)。
     - `<file>` のパスからファイルシステムのルート (`/`) まで親ディレクトリを順に辿り、`.risundlerc.toml` を探す。
         - 最初に見つかったもの (= `<file>` に最も近いもの) をオプションのデフォルト値とする。複数見つかってもマージはしない。
         - 無い場合は、`--compiler=g++ --keep=std` と `-std=gnu++17 -O2 -DONLINE_JUDGE -DATCODER` をデフォルト値とする。
@@ -67,7 +71,8 @@
             - 復元する `#include` は山括弧 (`<...>`) 形式に固定する。ダミーが表すのは必ず `-I` で解決される維持ライブラリであり、プリプロセス後の pragma 行からは元が `<>` か `""` か区別できない (情報が失われる) ため。引用符で書かれていても山括弧へ正規化され、`-I` 経由で同じく解決される。
             - **既知の制限**: 維持ライブラリを `#include "..."` で書き、かつバンドル対象ファイルと同じディレクトリに同名パス (例: `./atcoder/dsu`) が偶然存在すると、`""` のカレント探索が優先されてダミーがバイパスされ、維持指定したライブラリが展開されてしまう。`""` のソースディレクトリ探索は C++ 標準動作でコンパイラから抑制できないため、`<>` での include を推奨する。将来的には、linemarker が指すパスが維持ライブラリの `path` 配下でなくバイパスされた形跡を検出して警告する余地がある (バンドル実装時に linemarker 処理と併せて判断)。
         - 不要ヘッダー一覧に含まれるヘッダーは、そのヘッダー自身のコード行のみ削除。そのスコープ内にネストされた別ヘッダーのスコープは、そのヘッダーの要否に基づいて独立して判断する。
-    - linemarker はそのまま出力に残す。(バンドル後のコンパイラ診断の行番号が元ファイルを指すようにするため)
+    - linemarker は、生き残るコードの直前のものだけ出力に残す。(バンドル後のコンパイラ診断の行番号が元ファイルを指すようにするため。) コードが丸ごと削除されたヘッダーの linemarker は、指し示す先が無くなるためコードと一緒に削除する。
+        - 残す marker は GCC の linemarker (`# <行> "<ファイル>" <フラグ>`) ではなく、標準の `#line <行> "<ファイル>"` ディレクティブとして出力する。バンドル結果は提出される「ソース」であり、`# <行> ...` はプリプロセッサ「出力」用の GNU 拡張なので、規格準拠で可搬な `#line` がふさわしい。入れ子フラグ (1=進入, 2=復帰 等) は平坦化後に意味を持たず、残すと "linemarker ignored due to incorrect nesting" 警告の元になるため落とす (`#line` はフラグを持たない)。
     - `--embed` オプションがある場合、先頭に `// ` コメントで `<file>` のオリジナルコードを添付。
     - 先頭に `// Bundled with risundle v1.0` のような簡易的なクレジット表記を追加。
     - 完成したコードを出力。
@@ -97,20 +102,22 @@
 }
 ```
 
-`<id>` が `std` の場合 (識別子一覧を持たず、更新検知の対象外のため `files`・`hash` を省略):
+`<id>` が `std` の場合 (識別子一覧を持たず、更新検知の対象外のため `files`・`hash` を省略。代わりに、システム include パスの自動検出に用いた `compilers` (正規化済み絶対パスの集合) を持つ):
 
 ```json
 {
   "schema_version": 1,
-  "path": "/usr/include/c++/12"
+  "path": "/usr/include/c++/12",
+  "compilers": ["/usr/bin/x86_64-linux-gnu-g++-14"]
 }
 ```
 
 - `schema_version`: スキーマの互換性チェック用の整数。未知の値の場合は再生成を促すエラーを出す。
-- `path`: `library add` で指定されたインクルードパス (絶対パス)。`-I` オプションへそのまま渡す。
+- `path`: `library add` で指定されたインクルードパス (絶対パス)。`-I` オプションへそのまま渡す。`std` では検出したシステム include パスのうち代表 (最初のコンパイラの C++ 標準ライブラリ dir) を記録する (表示用)。
+- `compilers`: `std` のみ。`add-std` で std を認識させたコンパイラの集合 (実体の絶対パスへ正規化済み)。`update` 時の再検出と、バンドル時の「現在のコンパイラ向けに std が登録されているか」の照合警告に使う。
 - `hash`: `path` 以下の全ファイルの相対パスと内容から計算した集約ハッシュ (`sha256:` プレフィックス付き)。ライブラリの更新検知に使う。mtime ではなく内容ベースなので `git clone` や `cp` での時刻変化に影響されず、相対パスも含めるためファイルの追加・削除・リネームも検知できる。
 - `files`: ライブラリルート (`path`) からの相対パスをキーとし、そのファイルが定義する識別子名の配列を値とする。tree-sitter-cpp の tags クエリで各ファイルの定義シンボルを取得し、kind は持たず名前のみ。
-    - `std` は `files`・`hash` を省略する。`std` 以外は両方を必ず持つ (`files` は識別子が一つも無くても空オブジェクト `{}`)。これにより「`std`」と「識別子 0 件のライブラリ」を構造で区別する。
+    - `std` は `files`・`hash` を省略し `compilers` を持つ。`std` 以外は `files`・`hash` の両方を必ず持つ (`files` は識別子が一つも無くても空オブジェクト `{}`)。これにより「`std`」と「識別子 0 件のライブラリ」を構造で区別する。
 
 ## `.risundlerc.toml` フォーマット
 
@@ -137,7 +144,9 @@ rustup update
 cargo install cargo-update risundle
 ```
 
-インストール時、自動的に C++ の標準ライブラリを探し、`risundle library add std <path>` 相当の動作をする。見つからなかった場合は警告。
+インストール時、自動的に `risundle library add-std` 相当の動作をする。`add-std` は引数で渡されたコンパイラ (省略時 `g++`) のシステム include 探索パスを自動検出し、C++ 標準ライブラリ・コンパイラ組み込み (`immintrin.h` 等)・アーキ依存 (`bits/stdc++.h` 等)・C ライブラリの全 dir をまとめてダミー化する。検出に失敗した場合は警告。
+
+`add-std` は「単一の現在コンパイラ」をグローバルに固定するのではなく、**認識しているコンパイラの集合**を育てる。`add-std clang++` のように繰り返すと、その都度コンパイラを集合に加え、集合全コンパイラのシステム include を 1 つのダミーツリーへ統合する (ダミーは pragma 1 行で、復元は同名 `#include` になるため混在しても無害)。コンパイラは実体の絶対パスへ正規化して `g++` と `/usr/bin/g++` の表記揺れを防ぐ。バンドル時、対象コンパイラが認識集合に無ければ `add-std <それ>` を促す警告を出す (フェイルファスト)。`update std` は記録済み集合から統合ツリーを再構築する。
 
 ### バージョンアップ
 

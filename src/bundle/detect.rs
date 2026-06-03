@@ -19,12 +19,17 @@ use logos::{Lexer, Logos, Skip};
 ///
 /// 数値リテラルを 1 トークンとして食わせるのは、桁区切り (`1'000'000`) の `'` を char リテラルの
 /// 開始と誤認させないため。識別子は数字始まりになり得ないので、両者は先頭文字で排他に分かれる。
+///
+/// 数値トークンに `_` を含めないのは、ユーザー定義リテラル接尾辞 (`998244353_mint` の `_mint`) を
+/// 数値が飲み込まず、後続の識別子トークンとして分離させるため。`_mint` だけが依存の起点になる
+/// (`auto` 多用で型名が現れない) ケースでも取りこぼさない。桁区切りは `'` であり `_` ではないので、
+/// 除外しても区切りの保護は保たれる。分割が増える方向 = 過剰検出は無害。
 #[derive(Logos)]
 enum Token {
     #[regex(r"[A-Za-z_][A-Za-z0-9_]*")]
     Identifier,
 
-    #[regex(r"[0-9][A-Za-z0-9_'.]*", logos::skip)]
+    #[regex(r"[0-9][A-Za-z0-9'.]*", logos::skip)]
     Number,
 
     #[regex(r#""([^"\\]|\\.)*""#, logos::skip)]
@@ -143,6 +148,15 @@ mod tests {
         assert!(names.contains("v"));
         assert!(names.contains("use"));
         assert!(names.contains("symbol"));
+    }
+
+    #[test]
+    fn user_defined_literal_suffix_is_detected() {
+        // `auto x = 998244353_mint;` の唯一のライブラリ参照は接尾辞 _mint。数値が飲み込まず拾う。
+        let names = detect("auto x = 998244353_mint;");
+        assert!(names.contains("_mint"));
+        // 桁区切り付きの UDL でも接尾辞を分離する。
+        assert!(detect("auto v = 1'000'000_big;").contains("_big"));
     }
 
     #[test]

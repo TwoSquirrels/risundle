@@ -58,6 +58,11 @@ pub enum LibraryCommand {
         /// インクルードパス
         path: PathBuf,
     },
+    /// 標準ライブラリ (`std`) を登録する (コンパイラのシステム include パスを自動検出)
+    AddStd {
+        /// システム include パスの検出に用いるコンパイラ (省略時は g++)
+        compiler: Option<PathBuf>,
+    },
     /// ライブラリの登録を削除する
     Delete {
         /// ライブラリ ID

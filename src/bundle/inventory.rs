@@ -59,6 +59,18 @@ impl Inventory {
             .collect()
     }
 
+    /// `std` が登録済みなら、その認識コンパイラ集合 (正規化済み絶対パス) を返す。未登録なら `None`。
+    /// バンドル時に「現在のコンパイラ向けに std が登録されているか」を照合する警告に使う。
+    pub fn std_compilers(&self) -> Option<&[PathBuf]> {
+        self.libraries
+            .iter()
+            .find(|lib| lib.id == STD_ID)
+            .and_then(|lib| match &lib.kind {
+                TagsKind::Std { compilers } => Some(compilers.as_slice()),
+                TagsKind::Library { .. } => None,
+            })
+    }
+
     /// `std` が登録済みかつ維持指定なら真。`-nostdinc` を付けてダミー経由の解決に倒す合図。
     /// `std` 未登録時に偽を返すことで、ダミーが無い状態で `-nostdinc` を付けて壊すのを防ぐ。
     pub fn uses_nostdinc(&self) -> bool {
@@ -131,6 +143,21 @@ impl Inventory {
         None
     }
 
+    /// realpath 済みパスが属するライブラリを `<id>/<ルートからの相対>` (スラッシュ区切り) で表す。
+    /// 出力の `#line` にローカル絶対パス (ホームディレクトリ名を含みうる) を残さないための表示用で、
+    /// どのライブラリにも属さないパスは `None`。維持指定・`std` も区別せず対象にする (表示の一貫性
+    /// のためで、実際に `#line` へ現れるのは展開される非維持ライブラリだけ)。
+    pub fn library_relative(&self, canonical: &Path) -> Option<String> {
+        for lib in &self.libraries {
+            let Ok(relative) = canonical.strip_prefix(&lib.path) else {
+                continue;
+            };
+            let slash = relpath::to_slash(relative).ok()?;
+            return Some(format!("{}/{}", lib.id, slash));
+        }
+        None
+    }
+
     /// 与えた realpath 済みパスが、維持指定外の通常ライブラリ配下なら真。不要ヘッダー判定の候補
     /// (= 出力に現れた、削除しうるヘッダー) を選別するのに使う。`std`・維持指定は削除しない。
     pub fn is_pruneable(&self, canonical: &Path) -> bool {
@@ -188,7 +215,13 @@ mod tests {
     fn include_flags_point_kept_to_dummy_and_others_to_real_path() {
         let local = TempDir::new().unwrap();
         let store = LocalStore::with_root(local.path());
-        let std_path = register(&store, "std", TagsKind::Std);
+        let std_path = register(
+            &store,
+            "std",
+            TagsKind::Std {
+                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+            },
+        );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
 
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
@@ -212,7 +245,13 @@ mod tests {
     fn nostdinc_only_when_std_is_kept() {
         let local = TempDir::new().unwrap();
         let store = LocalStore::with_root(local.path());
-        register(&store, "std", TagsKind::Std);
+        register(
+            &store,
+            "std",
+            TagsKind::Std {
+                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+            },
+        );
 
         assert!(
             Inventory::load(&store, &keep_set(&["std"]))
@@ -238,8 +277,10 @@ mod tests {
         let dsu = acl_path.join("atcoder/dsu.hpp");
 
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
-        let headers = inventory
-            .dependency_headers(&keep_set(&["dsu", "unrelated"]), &BTreeSet::from([dsu.clone()]));
+        let headers = inventory.dependency_headers(
+            &keep_set(&["dsu", "unrelated"]),
+            &BTreeSet::from([dsu.clone()]),
+        );
 
         assert_eq!(headers, BTreeSet::from([dsu]));
     }
@@ -289,7 +330,13 @@ mod tests {
     fn is_pruneable_only_for_non_kept_library_paths() {
         let local = TempDir::new().unwrap();
         let store = LocalStore::with_root(local.path());
-        let std_path = register(&store, "std", TagsKind::Std);
+        let std_path = register(
+            &store,
+            "std",
+            TagsKind::Std {
+                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+            },
+        );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
 
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
@@ -297,6 +344,24 @@ mod tests {
         assert!(inventory.is_pruneable(&acl_path.join("atcoder/dsu.hpp")));
         assert!(!inventory.is_pruneable(&std_path.join("vector"))); // std は削除しない
         assert!(!inventory.is_pruneable(Path::new("/elsewhere/foo.hpp")));
+    }
+
+    #[test]
+    fn library_relative_renders_id_based_path_and_none_outside() {
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        let acl_path = register(&store, "ac-library", library_kind(&[]));
+
+        let inventory = Inventory::load(&store, &keep_set(&[])).unwrap();
+
+        assert_eq!(
+            inventory.library_relative(&acl_path.join("atcoder/dsu.hpp")),
+            Some("ac-library/atcoder/dsu.hpp".to_owned())
+        );
+        assert_eq!(
+            inventory.library_relative(Path::new("/elsewhere/foo.hpp")),
+            None
+        );
     }
 
     #[test]

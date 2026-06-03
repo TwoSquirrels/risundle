@@ -118,6 +118,16 @@ fn collect_leaf(node: Node, source: &[u8], names: &mut BTreeSet<String>) {
             descended = true;
         }
     }
+    // ユーザー定義リテラル `operator""_mint` は declarator 経由でここに達するが、接尾辞識別子 (`_mint`)
+    // は name/declarator フィールドではなく無名の子として吊り下がる。利用コードに現れるのはこの接尾辞
+    // なので子まで降りて拾う。記号演算子 (`operator+` 等) は識別子の子を持たず何も増えない。
+    if node.kind() == "operator_name" {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            collect_leaf(child, source, names);
+            descended = true;
+        }
+    }
     if !descended
         && NAME_NODES.contains(&node.kind())
         && let Ok(text) = node.utf8_text(source)
@@ -247,6 +257,25 @@ mod tests {
         for expected in ["X", "a", "var", "E", "Red", "e"] {
             assert!(names.contains(&expected.to_owned()), "{expected} が漏れた");
         }
+    }
+
+    #[test]
+    fn registers_user_defined_literal_suffix() {
+        // UDL `operator""_mint` の接尾辞 _mint を登録する。auto 多用で型名が現れず接尾辞だけが
+        // 依存の起点になるケースで、検出側 (998244353_mint → _mint) と名前が一致して逆引きが成立する。
+        let names = names_in(
+            "struct mint {}; mint operator\"\"_mint(unsigned long long x) { return mint{}; }",
+        );
+        assert!(names.contains(&"_mint".to_owned()));
+        assert!(names.contains(&"mint".to_owned()));
+    }
+
+    #[test]
+    fn symbolic_operator_adds_no_spurious_name() {
+        // 記号演算子は接尾辞識別子を持たないため余計な名前を生まない。
+        let names = names_in("struct V { V operator+(V o) { return o; } };");
+        assert!(names.contains(&"V".to_owned()));
+        assert!(!names.contains(&"operator".to_owned()));
     }
 
     #[test]
