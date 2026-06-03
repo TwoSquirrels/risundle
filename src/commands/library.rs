@@ -319,31 +319,46 @@ fn list(store: &LocalStore) -> Result<()> {
         println!("no libraries are registered");
         return Ok(());
     }
+    // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
         let tags = Tags::load(&store.tags_json(&id))?;
-        println!("{id}\t{}", tags.path.display());
+        println!("{id}\t{}\t{}", kind_label(&tags.kind), tags.path.display());
     }
     Ok(())
+}
+
+fn kind_label(kind: &TagsKind) -> &'static str {
+    match kind {
+        TagsKind::Std { .. } => "std",
+        TagsKind::Library { .. } => "library",
+    }
+}
+
+/// `show` の 1 項目を、ラベル幅を揃えて出力する。最長ラベル `Compilers` に合わせる。
+fn show_field(label: &str, value: &str) {
+    println!("{label:<9} {value}");
 }
 
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
     let tags = Tags::load(&store.tags_json(id))?;
-    println!("ID:   {id}");
-    println!("path: {}", tags.path.display());
+    show_field("ID", id);
+    show_field("Path", &tags.path.display().to_string());
     match &tags.kind {
         TagsKind::Std { compilers } => {
-            println!("kind: standard library (no identifier info or update detection)");
-            println!("recognized compilers: {}", compilers.len());
+            show_field("Kind", "std (no identifier info or update detection)");
+            show_field("Compilers", &compilers.len().to_string());
             for compiler in compilers {
                 println!("  {}", compiler.display());
             }
         }
         TagsKind::Library { hash, files } => {
-            println!("files with defined identifiers: {}", files.len());
+            show_field("Kind", "library");
+            show_field("Files", &format!("{} with defined identifiers", files.len()));
             if verbose {
-                println!("hash: {hash}");
+                show_field("Hash", hash);
+                println!("Definitions:");
                 for (file, names) in files {
                     println!("  {file}: {}", names.join(", "));
                 }
