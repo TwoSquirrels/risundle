@@ -9,8 +9,8 @@
 //! - **ダミーファイル自身を指す marker** — risundle 内部のダミーを指すだけで無意味なので捨てる。直後が
 //!   ダミー pragma 行になっている marker がそれと判る (ダミーは pragma 1 行のみ)。
 //!
-//! ただしバンドル先頭は、全体の出所を確定させるため、最初の生存行 (ダミー由来の `#include` であっても)
-//! の直前に保留中の実 marker (例: `#line 1 "sol.cpp"`) を出す。
+//! ダミー由来の `#include` も生存コード行の一種として扱い、その直前で保留中の実 marker (例:
+//! `#line 5 "main.cpp"`) を出す。これにより復元した `#include` も元ソースでの行位置に正しく紐づく。
 //!
 //! 残す marker は GCC の linemarker (`# <行> "<ファイル>" <フラグ>`) ではなく、標準の `#line` ディレクティブ
 //! (`#line <行> "<ファイル>"`) として出力する。バンドル結果は提出される「ソース」であり、`# <行> ...` は
@@ -68,23 +68,12 @@ pub fn rewrite(
                 if file.is_some_and(&is_unused) {
                     continue; // 不要ヘッダー由来のコード行は削除 (保留中の marker も出さない)
                 }
-                match restore_include(line) {
-                    Some(include) => {
-                        // ダミー pragma → `#include` 復元。ダミー marker は上で捨てているので marker は
-                        // 伴わない。ただし出力先頭だけは、全体の出所を確定させるため保留中の実 marker を出す。
-                        if output.is_empty() {
-                            flush_marker(&mut output, &mut pending, &mut presumed, &display);
-                        }
-                        push_line(&mut output, &include);
-                        presumed.advance();
-                    }
-                    None => {
-                        // 通常のコード行。出所を示すため、保留中の linemarker をここで確定出力する。
-                        flush_marker(&mut output, &mut pending, &mut presumed, &display);
-                        push_line(&mut output, line);
-                        presumed.advance();
-                    }
-                }
+                // ダミー pragma は `#include` へ復元する。復元 include も含めどの生存コード行も、出所を
+                // 示すため保留中の linemarker をここで確定出力する。ダミー自身を指す marker は上で捨て済み
+                // なので、ここで flush される pending は include の出所を指す実 marker (例: `#line 5 "main.cpp"`)。
+                flush_marker(&mut output, &mut pending, &mut presumed, &display);
+                push_line(&mut output, restore_include(line).as_deref().unwrap_or(line));
+                presumed.advance();
             }
         }
     }
@@ -277,6 +266,17 @@ mod tests {
         assert!(output.contains("#line 9 \"main.cpp\"\n"));
         assert!(!output.contains("# 9 \"main.cpp\"")); // GCC linemarker 形式は残さない
         assert!(!output.contains(" 2 3")); // フラグも残さない
+    }
+
+    #[test]
+    fn flushes_pending_marker_before_a_restored_include_mid_stream() {
+        // 先頭以外でも、復元 #include の直前に保留中の実 marker を出す。これが無いと include が
+        // 直前コードの presumed 行番号 (ここでは 2) に居座り、本来の出所 main.cpp:5 とズレる。
+        let input = "# 1 \"main.cpp\"\nint a;\n# 5 \"main.cpp\"\n# 1 \"/local/dummy/atcoder/dsu\"\n#pragma RISUNDLE_DUMMY <atcoder/dsu>\n# 6 \"main.cpp\" 2\nint b;\n";
+        assert_eq!(
+            rewrite(input, unused(&[]), verbatim),
+            "#line 1 \"main.cpp\"\nint a;\n#line 5 \"main.cpp\"\n#include <atcoder/dsu>\nint b;\n"
+        );
     }
 
     #[test]
