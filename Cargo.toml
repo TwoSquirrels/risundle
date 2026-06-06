@@ -1,6 +1,6 @@
 [package]
 name = "risundle"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 authors = ["TwoSquirrels"]
 description = "A C++ bundler with tree-shaking for competitive programming"
