@@ -18,8 +18,8 @@ impl LocalStore {
 
     /// OS 標準のデータディレクトリから `$LOCAL` を解決する。
     pub fn discover() -> Result<Self> {
-        let data_local = dirs::data_local_dir()
-            .context("could not determine the OS local data directory")?;
+        let data_local =
+            dirs::data_local_dir().context("could not determine the OS local data directory")?;
         Ok(Self::with_root(data_local.join(Self::APP_DIR)))
     }
 

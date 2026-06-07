@@ -89,9 +89,8 @@ impl Inventory {
             let TagsKind::Library { hash: expected, .. } = &lib.kind else {
                 continue; // std は検証対象外
             };
-            let actual = hash::aggregate(&lib.path).with_context(|| {
-                format!("failed to recompute the hash of library `{}`", lib.id)
-            })?;
+            let actual = hash::aggregate(&lib.path)
+                .with_context(|| format!("failed to recompute the hash of library `{}`", lib.id))?;
             if &actual != expected {
                 bail!(
                     "library `{0}` has changed since registration; run `risundle library update {0}` to update it",

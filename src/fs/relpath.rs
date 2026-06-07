@@ -15,9 +15,9 @@ pub fn to_slash(relative: &Path) -> Result<String> {
         let Component::Normal(name) = component else {
             continue;
         };
-        let name = name.to_str().with_context(|| {
-            format!("file name is not valid UTF-8: {}", relative.display())
-        })?;
+        let name = name
+            .to_str()
+            .with_context(|| format!("file name is not valid UTF-8: {}", relative.display()))?;
         parts.push(name);
     }
     Ok(parts.join("/"))
