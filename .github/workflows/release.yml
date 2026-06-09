@@ -3,8 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-*"
+      - "v*"
 
 permissions:
   contents: read
@@ -65,7 +64,7 @@ jobs:
 
   binaries:
     name: binary (${{ matrix.target }})
-    needs: validate
+    needs: [validate, publish]
     if: needs.validate.outputs.release == 'true'
     runs-on: ${{ matrix.os }}
     permissions:
@@ -76,7 +75,7 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-15-intel
+          - os: macos-26-intel
             target: x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin

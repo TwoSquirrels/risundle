@@ -2,7 +2,7 @@
 
 **Tree-Shaking 機能付き、競技プログラミング用 C++ ソースバンドラー**
 
-[![CI](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yaml/badge.svg)](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yaml)
+[![CI](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yml/badge.svg)](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://twosquirrels.github.io/risundle/badge.json)](https://twosquirrels.github.io/risundle/)
 [![crates.io](https://img.shields.io/crates/v/risundle.svg)](https://crates.io/crates/risundle)
 [![license](https://img.shields.io/crates/l/risundle.svg)](LICENSE)

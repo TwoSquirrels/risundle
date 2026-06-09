@@ -36,13 +36,16 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+  # macOS/Windows はユニットテストとビルド健全性のみ (--bins)。tests/ 配下の統合・E2E テストは
+  # GCC 専用 (<bits/stdc++.h> や実 GCC ライブラリ) で clang/MinGW では動かないため、ここでは走らせない。
+  # それらフルスイートは下の coverage ジョブ (Linux + g++ + submodules) で実行している。
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, macos-26-intel, windows-latest]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -50,6 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo test --locked --all-features --bins
 
+  # Linux のフルスイート (ユニット + tests/ の統合・E2E) を計測し、Pages へカバレッジを公開する。
   coverage:
     name: coverage
     runs-on: ubuntu-latest
