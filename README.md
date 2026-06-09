@@ -1,95 +1,97 @@
 # risundle
 
-**Tree-Shaking 機能付き、競技プログラミング用 C++ ソースバンドラー**
+**A tree-shaking C++ source bundler for competitive programming**
+
+English | [日本語](README.ja.md)
 
 [![CI](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yml/badge.svg)](https://github.com/TwoSquirrels/risundle/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://twosquirrels.github.io/risundle/badge.json)](https://twosquirrels.github.io/risundle/)
 [![crates.io](https://img.shields.io/crates/v/risundle.svg)](https://crates.io/crates/risundle)
 [![license](https://img.shields.io/crates/l/risundle.svg)](LICENSE)
 
-競技プログラミングの解答を、ライブラリ込みで提出用の 1 ファイルにまとめます。include をそのまま展開する [oj-bundle](https://github.com/online-judge-tools/verification-helper) などと違い、解答が実際に使っている部分だけを残す Tree-Shaking を行うため、バンドル後のファイルが小さくなります。
+risundle bundles your competitive programming solution, libraries included, into a single file ready for submission. Unlike tools such as [oj-bundle](https://github.com/online-judge-tools/verification-helper), which simply expand every `#include` as is, risundle performs tree-shaking to keep only the parts your solution actually uses, so the bundled file stays small.
 
-## 特徴
+## Features
 
-- IWYU のような重い静的解析を必要とせず、手元のコンパイラのプリプロセスだけで完結する、競技プログラミング提出に特化したツールです。
-- 解答が実際に使っているコードだけを残すので、提出サイズ制限の厳しいジャッジでも通りやすくなります。
-- 自作ライブラリを全部 include したテンプレートを 1 つ用意すれば、問題ごとに include を切り替える必要がありません。
+- A tool tailored to competitive programming submissions: it needs no heavy static analysis like IWYU and relies solely on your local compiler's preprocessing.
+- It keeps only the code your solution actually uses, so submissions pass even on judges with strict size limits.
+- Prepare a single template that includes all of your own libraries, and you no longer need to switch includes per problem.
 
 > [!WARNING]
-> v1.0 では、ヘッダーオンリーライブラリのみをサポートしています。宣言と実装が別のファイルに分かれているライブラリは、バンドル後に定義が消えてコンパイルエラーになる可能性があります。
+> v1.0 supports header-only libraries only. Libraries that split declarations and implementations across separate files may lose their definitions after bundling and fail to compile.
 
-## インストール
+## Installation
 
-[Rust ツールチェーン](https://www.rust-lang.org/tools/install) と C++ コンパイラ (`g++` など) が必要です。
+You need the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C++ compiler (such as `g++`).
 
 ```bash
 cargo install risundle
 ```
 
-更新には [cargo-update](https://crates.io/crates/cargo-update) が使えます。
+You can use [cargo-update](https://crates.io/crates/cargo-update) to upgrade.
 
 ```bash
 cargo install-update risundle
 ```
 
-## クイックスタート
+## Quick start
 
 ```bash
-# 自作ライブラリを登録する (ID は任意)
+# Register your own library (the ID is arbitrary)
 risundle library add mylib ~/cp/library
 
-# 登録したライブラリを include した解答を、1 ファイルへバンドルする
+# Bundle a solution that includes the registered library into a single file
 risundle main.cpp > submission.cpp
 ```
 
-`std` は初回バンドル時に自動登録され、既定で温存されます。
+`std` is registered automatically on the first bundle and is kept by default.
 
-## 使い方
+## Usage
 
-### バンドル
+### Bundling
 
 ```
 risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]
 ```
 
-`<FILE>` をバンドルし、結果を標準出力へ書き出します。
+Bundles `<FILE>` and writes the result to standard output.
 
-| オプション | 説明 |
+| Option | Description |
 | --- | --- |
-| `-c`, `--compiler <PATH>` | 使用するコンパイラ (既定: `g++`) |
-| `-k`, `--keep <ID>` | Tree-Shaking の対象外にするライブラリ ID (繰り返し可。既定: `std`) |
-| `-e`, `--embed` | 元のソースを先頭にコメントとして埋め込む |
-| `-n`, `--no-check` | ライブラリ更新のハッシュ検証をスキップする |
-| `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す |
+| `-c`, `--compiler <PATH>` | Compiler to use (default: `g++`) |
+| `-k`, `--keep <ID>` | Library ID to exclude from tree-shaking (repeatable; default: `std`) |
+| `-e`, `--embed` | Embed the original source as a comment at the top |
+| `-n`, `--no-check` | Skip the hash verification of library updates |
+| `-- <OPTIONS>...` | Pass everything after `--` straight to the compiler |
 
 ```bash
-# clang++ を使い、AC Library も展開せず #include のまま残す
+# Use clang++ and leave AC Library unexpanded, keeping it as #include
 risundle -c clang++ -k std -k ac-library main.cpp > submission.cpp
 
-# コンパイラに追加オプションを渡す
+# Pass extra options to the compiler
 risundle main.cpp -- -std=gnu++20 -O2
 ```
 
-### ライブラリ管理
+### Library management
 
 ```
 risundle library <SUBCOMMAND>
 ```
 
-| サブコマンド | 説明 |
+| Subcommand | Description |
 | --- | --- |
-| `add <ID> <PATH>` | ライブラリを登録する |
-| `add-std [COMPILER]` | 標準ライブラリ (`std`) を登録する (既定: `g++`) |
-| `list` | 登録済みライブラリを一覧する |
-| `show <ID> [-v]` | ライブラリの詳細を表示する |
-| `update [ID] [PATH]` | ライブラリの変更を反映する (ID 省略時は全ライブラリ) |
-| `delete <ID>` | ライブラリの登録を削除する |
+| `add <ID> <PATH>` | Register a library |
+| `add-std [COMPILER]` | Register the standard library (`std`) (default: `g++`) |
+| `list` | List registered libraries |
+| `show <ID> [-v]` | Show details of a library |
+| `update [ID] [PATH]` | Apply changes to a library (updates all libraries when ID is omitted) |
+| `delete <ID>` | Remove a library registration |
 
-`add-std` は複数回呼べます。`risundle library add-std clang++` のようにコンパイラを足すと、それぞれのシステム include を統合し、使い分けられます。
+`add-std` can be called multiple times. Adding a compiler with, for example, `risundle library add-std clang++` merges each one's system includes so you can switch between them.
 
-## 設定ファイル
+## Configuration file
 
-解答ファイルのあるディレクトリから親方向に探索し、最も近い `.risundlerc.toml` を 1 つ採用します (複数ファイルのマージはしません)。CLI オプションが設定ファイルより優先されます。
+risundle searches from the directory of the solution file toward its parents and adopts the single nearest `.risundlerc.toml` (it does not merge multiple files). CLI options take precedence over the configuration file.
 
 ```toml
 [compiler]
@@ -103,32 +105,32 @@ keep = ["std"]
 embed = false
 ```
 
-上記は既定値です。省略した項目はこの既定値で補われます。
+The above are the default values. Omitted items are filled in with these defaults.
 
-## ベンチマーク
+## Benchmarks
 
-IWYU (include-what-you-use 0.21) と実行時間を比較しました。環境は WSL2 (Ubuntu 24.04、Intel Core 7 240H、g++ 14.2) です。
+We compared execution time against IWYU (include-what-you-use 0.21). The environment was WSL2 (Ubuntu 24.04, Intel Core 7 240H, g++ 14.2).
 
-| ライブラリ | risundle | IWYU |
+| Library | risundle | IWYU |
 | --- | --- | --- |
-| AC Library | 0.031 秒 | 0.491 秒 |
-| Nyaan Library | 0.033 秒 | 2.085 秒 |
+| AC Library | 0.031 s | 0.491 s |
+| Nyaan Library | 0.033 s | 2.085 s |
 
-risundle はライブラリ規模によらずほぼ一定で、IWYU はヘッダー数が増えるほど伸びます。IWYU は clang の AST をフル構築するのに対し、risundle はコンパイラのプリプロセス (`-E`/`-M`) だけで完結するためです。なお IWYU と risundle は目的が異なり (IWYU は `#include` の修正提案、risundle はバンドル)、同じ問題を解くツールではありません。
+risundle stays nearly constant regardless of library size, while IWYU grows as the number of headers increases. This is because IWYU fully builds the clang AST, whereas risundle relies solely on the compiler's preprocessing (`-E`/`-M`). Note that IWYU and risundle serve different purposes (IWYU suggests `#include` fixes; risundle bundles) and do not solve the same problem.
 
-## 仕組み
+## How it works
 
-1. プリプロセス (`-E`) で include を展開する。維持指定 (`keep`) のライブラリはダミー経由で `#include` のまま残す。
-2. 解答が使う識別子を字句解析で検出し、登録済みライブラリの定義から依存ヘッダーを逆引きする。
-3. `-M` で必要なヘッダーの推移閉包を求め、出力に残った不要なヘッダーを削除する。
-4. `#line` ディレクティブで元の出所を保ちつつ、1 ファイルへ再構成する。
+1. Expand includes via preprocessing (`-E`). Libraries marked to be kept (`keep`) are left as `#include` by routing them through a dummy.
+2. Detect the identifiers your solution uses through lexical analysis, and reverse-look-up the dependent headers from the definitions of registered libraries.
+3. Compute the transitive closure of required headers with `-M`, and remove the unneeded headers left in the output.
+4. Reassemble everything into a single file while preserving the original origins with `#line` directives.
 
-include の展開はコンパイラに任せているため、`#pragma once` も手動インクルードガードも正しく扱われます。
+Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly.
 
-## 開発
+## Development
 
-機能仕様は [docs/spec.md](docs/spec.md)、内部設計の方針は [docs/architecture.md](docs/architecture.md) にまとめています。
+The functional specification is in [docs/spec.md](docs/spec.md), and the internal design rationale is in [docs/architecture.md](docs/architecture.md) (Japanese only).
 
-## ライセンス
+## License
 
 [MIT License](LICENSE) — © 2026 TwoSquirrels

@@ -1,66 +1,68 @@
-# risundle 仕様
+# risundle Specification
 
-README より踏み込んだ、各コマンドの挙動・エラー条件・出力形式・データ構造をまとめる。「なぜこう設計したか」という内部の判断は [architecture.md](architecture.md) を参照。
+English | [日本語](spec.ja.md)
 
-## 基本方針
+This document goes deeper than the README, covering each command's behavior, error conditions, output format, and data structures. For the internal rationale of "why it is designed this way," see [architecture.md](architecture.md) (Japanese only).
 
-- `#include` の削減や minify はしない (それぞれ IWYU 等や外部の minifier の領分)。バンドル後のファイルサイズの削減のみを目的とする。
-- Tree-Shaking は識別子名の照合による近似で、厳密な依存解析はしない。過剰に残す方向へ倒しているため必要なコードが誤って消えることは起きにくく、万一取りこぼしても提出時のコンパイルエラーで気づける。
-- マクロは展開される。ローカルデバッグ用の `#include` も Tree-Shaking の対象にできるようにするため。
-- 複数ソースファイルのバンドルには対応しない。
-- 登録済みライブラリなどの内部データは、[`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) 配下の `risundle` ディレクトリ (以後 `$LOCAL`) に保存する。
+## Basic policy
 
-## `library` サブコマンド
+- No `#include` reduction or minification (those belong to IWYU and external minifiers, respectively). The sole goal is reducing the bundled file size.
+- Tree-shaking is an approximation based on identifier-name matching, not strict dependency analysis. It errs toward keeping too much, so needed code is rarely removed by mistake, and even if something is missed, you notice it through a compile error at submission time.
+- Macros are expanded. This is so that `#include`s used only for local debugging can also be subject to tree-shaking.
+- Bundling multiple source files is not supported.
+- Internal data such as registered libraries is stored under a `risundle` directory inside [`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) (hereafter `$LOCAL`).
 
-- `add <id> <path>` — `<path>` をインクルードパスとして登録する。
-    - `<id>` が `std` の場合はエラー (標準ライブラリは `add-std` を使う)。
-    - 既に同じ `<id>` が登録済みの場合はエラー。
-    - 登録時に、各ファイルの定義識別子一覧と、`<path>` 以下の内容から計算した集約ハッシュを記録する。
-- `add-std [<compiler>]` — 標準ライブラリ (`std`) を登録する。
-    - `<compiler>` (省略時 `g++`) のシステム include 探索パスを自動検出する。
-    - 繰り返し呼ぶと、その都度コンパイラを認識集合に加える (加算式)。集合全コンパイラの探索パスを 1 つに統合するため、複数コンパイラを使い分けられる。
-- `delete <id>` — 登録を削除する。未登録の場合はエラー。
-- `update [<id> [<path>]]` — ライブラリの変更を反映する。
-    - `<id>` を指定した場合、未登録ならエラー。`std` は認識コンパイラ集合から再検出し、それ以外は再登録する (`<path>` 省略時は登録済みのパスを使う)。
-    - `<id>` を省略した場合は、登録済みの全ライブラリを更新する。
-- `list` — 登録済みライブラリの ID とインクルードパスを一覧する。
-- `show [-v | --verbose] <id>` — ライブラリの詳細を表示する。未登録の場合はエラー。
-    - 既定では ID・インクルードパス・種別・定義識別子を持つファイル数を表示する。
-    - `-v` 指定時は、集約ハッシュと各ファイルの定義識別子一覧も表示する。
+## `library` subcommand
 
-## バンドル
+- `add <id> <path>` — Register `<path>` as an include path.
+    - Errors if `<id>` is `std` (use `add-std` for the standard library).
+    - Errors if the same `<id>` is already registered.
+    - On registration, records the list of defined identifiers for each file and an aggregate hash computed from the contents under `<path>`.
+- `add-std [<compiler>]` — Register the standard library (`std`).
+    - Auto-detects the system include search paths of `<compiler>` (default `g++`).
+    - Calling it repeatedly adds that compiler to the recognized set each time (additive). It merges the search paths of all compilers in the set into one, so you can switch between multiple compilers.
+- `delete <id>` — Remove a registration. Errors if not registered.
+- `update [<id> [<path>]]` — Apply changes to a library.
+    - When `<id>` is given, errors if not registered. For `std`, it re-detects from the recognized compiler set; otherwise it re-registers (using the registered path when `<path>` is omitted).
+    - When `<id>` is omitted, updates all registered libraries.
+- `list` — List the IDs and include paths of registered libraries.
+- `show [-v | --verbose] <id>` — Show details of a library. Errors if not registered.
+    - By default, shows the ID, include path, kind, and the number of files that have defined identifiers.
+    - With `-v`, also shows the aggregate hash and the list of defined identifiers per file.
 
-オプション一覧は README を参照。以下は挙動の詳細。
+## Bundling
 
-### 設定の解決
+See the README for the full list of options. The following are the behavioral details.
 
-`<file>` のあるディレクトリから親方向に `.risundlerc.toml` を探し、最も近い 1 つだけを既定値に使う (複数あってもマージしない)。CLI オプションは設定ファイルより優先される。どちらにも無い項目は組み込みの既定値 (`compiler = g++`、`options = ["-std=gnu++17", "-O2", "-DONLINE_JUDGE", "-DATCODER"]`、`keep = ["std"]`、`embed = false`) で補う。
+### Resolving configuration
 
-### ライブラリの変更検知
+Searches from the directory of `<file>` toward its parents for `.risundlerc.toml` and uses only the single nearest one as defaults (no merging even if multiple exist). CLI options take precedence over the configuration file. Items present in neither are filled in with the built-in defaults (`compiler = g++`, `options = ["-std=gnu++17", "-O2", "-DONLINE_JUDGE", "-DATCODER"]`, `keep = ["std"]`, `embed = false`).
 
-維持指定 (`keep`) していない `std` 以外のライブラリについて、登録時のハッシュと現在の内容を照合する。食い違う場合は `library update` を促してエラー終了する。`--no-check` を指定すると検証自体をスキップする。維持指定ライブラリと `std` は識別子情報を使わないため検証しない。
+### Library change detection
 
-ハッシュは mtime ではなく内容ベースなので、`git clone` や `cp` による時刻変化では誤検知せず、ファイルの追加・削除・リネームは検知できる。
+For libraries other than `std` that are not marked to be kept (`keep`), the registration-time hash is compared against the current contents. If they differ, it prompts you to run `library update` and exits with an error. Specifying `--no-check` skips the verification itself. Kept libraries and `std` are not verified because they do not use identifier information.
 
-### 維持指定 (keep)
+The hash is content-based rather than mtime-based, so it does not false-positive on time changes from `git clone` or `cp`, while it can detect file additions, deletions, and renames.
 
-維持指定したライブラリは展開せず `#include` のまま残す (Tree-Shaking の対象外)。既定で `std` が含まれる。`std` を維持指定するとコンパイラに `-nostdinc` を付け、システムヘッダーをダミー経由で解決する。
+### Keep
 
-### 出力形式
+A kept library is not expanded and is left as `#include` (excluded from tree-shaking). `std` is included by default. Keeping `std` adds `-nostdinc` to the compiler and resolves system headers through a dummy.
 
-- 先頭行に `// Bundled with risundle v<version>` のクレジットを付ける。
-- `--embed` 指定時は、続けて元ソースを `// ` コメントで添付する。
-- 本体には、出所を示す `#line` ディレクティブが入る (バンドル後のコンパイラ診断が元ファイルの行を指すようにするため)。維持指定ライブラリは `#include` (山括弧形式) に復元され、それ以外の使用ヘッダーは展開済みのコードとして残る。
+### Output format
 
-### 既知の制限
+- The first line carries the credit `// Bundled with risundle v<version>`.
+- With `--embed`, the original source is attached afterward as `// ` comments.
+- The body contains `#line` directives indicating origins (so that post-bundle compiler diagnostics point to the lines in the original files). Kept libraries are restored to `#include` (angle-bracket form), while other used headers remain as expanded code.
 
-維持ライブラリを `#include "..."` で書き、かつバンドル対象ファイルと同じディレクトリに同名パス (例: `./atcoder/dsu`) が偶然存在すると、`""` のカレント探索が優先されてダミーがバイパスされ、維持指定したライブラリが展開されてしまう。`""` のソースディレクトリ探索は C++ 標準動作でコンパイラから抑制できないため、維持ライブラリは `<>` での include を推奨する。
+### Known limitation
+
+If you write a kept library with `#include "..."` and a path of the same name (e.g., `./atcoder/dsu`) happens to exist in the same directory as the file being bundled, the `""` current-directory search takes precedence and bypasses the dummy, causing the kept library to be expanded. Because the `""` source-directory search is standard C++ behavior that cannot be suppressed from the compiler, using `<>` includes for kept libraries is recommended.
 
 ## `tags.json`
 
-`library add` が生成し、バンドルコマンドが読み込む中核データ構造。`$LOCAL/libraries/<id>/tags.json` に置かれる。マシンローカルなキャッシュであり、可搬性は持たない (`path` は絶対パス)。
+The core data structure generated by `library add` and read by the bundle command. It lives at `$LOCAL/libraries/<id>/tags.json`. It is a machine-local cache and is not portable (`path` is an absolute path).
 
-`<id>` が `std` でない場合:
+When `<id>` is not `std`:
 
 ```json
 {
@@ -74,7 +76,7 @@ README より踏み込んだ、各コマンドの挙動・エラー条件・出�
 }
 ```
 
-`<id>` が `std` の場合:
+When `<id>` is `std`:
 
 ```json
 {
@@ -84,8 +86,8 @@ README より踏み込んだ、各コマンドの挙動・エラー条件・出�
 }
 ```
 
-- `schema_version`: スキーマの互換性チェック用の整数。未知の値の場合は再生成を促すエラーを出す。
-- `path`: インクルードパス (絶対パス)。`std` では検出したシステム include パスのうち代表 (最初のコンパイラの C++ 標準ライブラリ dir) を表示用に記録する。
-- `compilers`: `std` のみ。std を認識させたコンパイラの集合 (実体の絶対パスへ正規化済み)。
-- `hash`: `path` 以下の全ファイルの相対パスと内容から計算した集約ハッシュ。`std` では持たない。
-- `files`: ライブラリルートからの相対パスをキーとし、そのファイルが定義する識別子名の配列を値とする。`std` では持たない。`std` 以外は識別子が無くても空オブジェクト `{}` を持つため、構造上 `std` と区別できる。
+- `schema_version`: An integer for schema compatibility checks. On an unknown value, it raises an error prompting regeneration.
+- `path`: The include path (absolute). For `std`, it records a representative one among the detected system include paths (the C++ standard library dir of the first compiler) for display.
+- `compilers`: `std` only. The set of compilers that `std` was registered with (normalized to the absolute paths of the actual binaries).
+- `hash`: An aggregate hash computed from the relative paths and contents of all files under `path`. Not present for `std`.
+- `files`: Keys are paths relative to the library root, and values are the arrays of identifier names that the file defines. Not present for `std`. Non-`std` libraries always carry an empty object `{}` even when there are no identifiers, so they are structurally distinguishable from `std`.
