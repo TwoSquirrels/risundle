@@ -1,7 +1,7 @@
 //! ライブラリのダミーファイル生成。`<source_root>` 以下のディレクトリ構造をそのまま写し取り、
 //! 各ファイルを `#pragma RISUNDLE_DUMMY <相対パス>` だけの内容に置き換えて `<dummy_root>` 以下へ
 //! 出力する。バンドル時、維持指定ライブラリの `-I` をこのダミーへ向け、pragma を後段で
-//! `#include` へ戻すことで、当該ライブラリを Tree-Shaking 対象から除外する。
+//! `#include` へ戻すことで、当該ライブラリを tree-shaking 対象から除外する。
 
 use std::path::Path;
 

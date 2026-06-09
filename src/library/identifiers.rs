@@ -9,7 +9,7 @@
 //!
 //! 逆引きで使わないメンバ変数名やマクロ名も拾うが、risundle は「余分に検出する方向に倒せば安全」
 //! という設計のため許容する (取りこぼしのみが依存漏れ = コンパイルエラーを招く)。ただし namespace 名
-//! だけは例外的に除外する。利用コードに必ず現れて全ヘッダーに紐づき、Tree-Shaking を無効化して
+//! だけは例外的に除外する。利用コードに必ず現れて全ヘッダーに紐づき、tree-shaking を無効化して
 //! しまうためで、過剰検出が「安全」でなくなる唯一のケースである (詳細は [`NAME_NODES`])。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,7 +41,7 @@ const SKIP_DESCENT: &[&str] = &[
 ///
 /// `namespace_identifier` は意図的に除外する。namespace 名 (`atcoder` 等) は複数ファイルで開かれ、
 /// 利用コードにも必ず現れるため、定義として登録すると逆引きでほぼ全ヘッダーが依存と判定され
-/// Tree-Shaking が無効化される。namespace 内のメンバは子の再帰で個別に拾うため取りこぼさない。
+/// tree-shaking が無効化される。namespace 内のメンバは子の再帰で個別に拾うため取りこぼさない。
 const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier"];
 
 /// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名を集約する。
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn ignores_namespace_names() {
         // namespace 名は利用コードに必ず現れ、ほぼ全ヘッダーに紐づくため定義として拾わない
-        // (拾うと Tree-Shaking が無効化される)。中のメンバ (dsu) は拾う。
+        // (拾うと tree-shaking が無効化される)。中のメンバ (dsu) は拾う。
         let names = names_in("namespace atcoder { namespace internal { struct dsu {}; } }");
         assert!(names.contains(&"dsu".to_owned()));
         for ns in ["atcoder", "internal"] {

@@ -1,7 +1,7 @@
 //! 登録済みライブラリの突き合わせ用インベントリ。`tags.json` を読み込み、バンドルの各工程が必要と
 //! する 4 つの問い合わせに答える: インクルードパスの組み立て (`-I`)、`-nostdinc` の要否、ハッシュ
 //! 検証、そして `識別子 → 依存ヘッダー` の逆引き。維持指定 (keep) と種別 (`std` / 通常) を保持し、
-//! 「維持指定された (Tree-Shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
+//! 「維持指定された (tree-shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
 //! 区別を、各メソッドで一貫して適用する。
 
 use std::collections::BTreeSet;
@@ -316,7 +316,7 @@ mod tests {
         );
         let dsu = acl_path.join("atcoder/dsu.hpp");
 
-        // ac-library を維持指定すると、その識別子は逆引きされない (Tree-Shaking 対象外)。
+        // ac-library を維持指定すると、その識別子は逆引きされない (tree-shaking 対象外)。
         let inventory = Inventory::load(&store, &keep_set(&["ac-library"])).unwrap();
         assert!(
             inventory

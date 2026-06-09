@@ -1,5 +1,5 @@
 //! プリプロセス出力の [linemarker] 解析。`gcc -E` は展開結果に `# 行番号 "ファイル" フラグ...` の
-//! 形式で出所を埋め込む。これを解釈して各コード行がどのファイル由来かを追跡し、Tree-Shaking の
+//! 形式で出所を埋め込む。これを解釈して各コード行がどのファイル由来かを追跡し、tree-shaking の
 //! 「`<file>` 由来部分だけを見る」「ヘッダー単位で要否を判断する」工程の土台にする。
 //!
 //! [linemarker]: https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html
