@@ -485,8 +485,10 @@ mod tests {
             End of search list.\n\
             trailing junk\n";
         // 実在する dir のみ realpath 化される。"." はカレントなので拾われる。
+        // 期待値も同じく canonicalize する: Windows の verbatim パス (`\\?\`) や macOS の
+        // symlink (/tmp→/private/tmp) で表記が分岐するため、関数と同じ正規化を通して比較する。
         let dirs = parse_search_dirs(verbose);
-        assert_eq!(dirs, vec![std::env::current_dir().unwrap()]);
+        assert_eq!(dirs, vec![Path::new(".").canonicalize().unwrap()]);
     }
 
     #[test]
