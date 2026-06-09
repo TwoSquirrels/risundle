@@ -242,7 +242,9 @@ fn resolve_source_root(path: &Path) -> Result<PathBuf> {
 /// 含む ID を許すと意図しない場所を読み書きしてしまう。フェイルファストで早期に弾く。
 fn validate_id(id: &str) -> Result<()> {
     if id.is_empty() || id == "." || id == ".." || id.contains('/') || id.contains('\\') {
-        bail!("library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)");
+        bail!(
+            "library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)"
+        );
     }
     Ok(())
 }
@@ -295,7 +297,9 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     match tags.kind {
         TagsKind::Std { compilers } => {
             if path.is_some() {
-                bail!("a path cannot be specified for the standard library (it is auto-detected from the compiler)");
+                bail!(
+                    "a path cannot be specified for the standard library (it is auto-detected from the compiler)"
+                );
             }
             let discovered = discover_all(&compilers)?;
             register_std(store, &discovered)?;
@@ -355,7 +359,10 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
         }
         TagsKind::Library { hash, files } => {
             show_field("Kind", "library");
-            show_field("Files", &format!("{} with defined identifiers", files.len()));
+            show_field(
+                "Files",
+                &format!("{} with defined identifiers", files.len()),
+            );
             if verbose {
                 show_field("Hash", hash);
                 println!("Definitions:");
@@ -478,8 +485,10 @@ mod tests {
             End of search list.\n\
             trailing junk\n";
         // 実在する dir のみ realpath 化される。"." はカレントなので拾われる。
+        // 期待値も同じく canonicalize する: Windows の verbatim パス (`\\?\`) や macOS の
+        // symlink (/tmp→/private/tmp) で表記が分岐するため、関数と同じ正規化を通して比較する。
         let dirs = parse_search_dirs(verbose);
-        assert_eq!(dirs, vec![std::env::current_dir().unwrap()]);
+        assert_eq!(dirs, vec![Path::new(".").canonicalize().unwrap()]);
     }
 
     #[test]

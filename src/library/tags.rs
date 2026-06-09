@@ -40,8 +40,7 @@ impl Tags {
     }
 
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string_pretty(&RawTags::from(self))
-            .context("failed to serialize tags.json")
+        serde_json::to_string_pretty(&RawTags::from(self)).context("failed to serialize tags.json")
     }
 
     pub fn load(path: &Path) -> Result<Self> {
@@ -52,8 +51,7 @@ impl Tags {
 
     pub fn save(&self, path: &Path) -> Result<()> {
         let json = self.to_json()?;
-        std::fs::write(path, json)
-            .with_context(|| format!("failed to write {}", path.display()))
+        std::fs::write(path, json).with_context(|| format!("failed to write {}", path.display()))
     }
 }
 

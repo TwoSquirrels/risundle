@@ -46,8 +46,12 @@ pub fn resolve(start_file: &Path) -> Result<Config> {
 
 fn find_config_file(start_file: &Path) -> Result<Option<PathBuf>> {
     // ancestors() が機能するよう絶対パス化する。相対パスのままだと親を辿れない。
-    let absolute = std::path::absolute(start_file)
-        .with_context(|| format!("failed to make an absolute path for {}", start_file.display()))?;
+    let absolute = std::path::absolute(start_file).with_context(|| {
+        format!(
+            "failed to make an absolute path for {}",
+            start_file.display()
+        )
+    })?;
     // 先頭 (ファイル自身) を除いた親ディレクトリ群を、近い順に探索する。
     let found = absolute
         .ancestors()
@@ -60,8 +64,8 @@ fn find_config_file(start_file: &Path) -> Result<Option<PathBuf>> {
 fn load(path: &Path) -> Result<Config> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
-    let raw: RawConfig = toml::from_str(&text)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let raw: RawConfig =
+        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(raw.into())
 }
 

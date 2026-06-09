@@ -72,7 +72,10 @@ pub fn rewrite(
                 // 示すため保留中の linemarker をここで確定出力する。ダミー自身を指す marker は上で捨て済み
                 // なので、ここで flush される pending は include の出所を指す実 marker (例: `#line 5 "main.cpp"`)。
                 flush_marker(&mut output, &mut pending, &mut presumed, &display);
-                push_line(&mut output, restore_include(line).as_deref().unwrap_or(line));
+                push_line(
+                    &mut output,
+                    restore_include(line).as_deref().unwrap_or(line),
+                );
                 presumed.advance();
             }
         }

@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  # macOS/Windows はユニットテストとビルド健全性のみ (--bins)。tests/ 配下の統合・E2E テストは
+  # GCC 専用 (<bits/stdc++.h> や実 GCC ライブラリ) で clang/MinGW では動かないため、ここでは走らせない。
+  # それらフルスイートは下の coverage ジョブ (Linux + g++ + submodules) で実行している。
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-26-intel, windows-latest]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo test --locked --all-features --bins
+
+  # Linux のフルスイート (ユニット + tests/ の統合・E2E) を計測し、Pages へカバレッジを公開する。
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: rustup component add llvm-tools-preview
+      - uses: taiki-e/install-action@0631aa6515c7d545823c67cfae7ef4fc7f490154 # v2.81.8
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Collect coverage
+        run: cargo llvm-cov --locked --all-features --no-report
+
+      - name: Build report and badge
+        run: |
+          cargo llvm-cov report --html --output-dir target/llvm-cov
+          pct=$(cargo llvm-cov report --json --summary-only \
+            | jq '.data[0].totals.lines.percent')
+          rounded=$(awk -v p="$pct" 'BEGIN { printf "%.1f", p }')
+          color=$(awk -v p="$pct" 'BEGIN {
+            if      (p >= 90) print "brightgreen"
+            else if (p >= 75) print "green"
+            else if (p >= 60) print "yellowgreen"
+            else if (p >= 40) print "yellow"
+            else if (p >= 20) print "orange"
+            else              print "red"
+          }')
+          mkdir -p _site
+          cp -r target/llvm-cov/html/. _site/
+          jq -n --arg m "${rounded}%" --arg c "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $m, color: $c}' > _site/badge.json
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy-pages:
+    name: deploy coverage to Pages
+    needs: coverage
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+
+  package:
+    name: package (publish dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - run: cargo publish --locked --dry-run
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@0631aa6515c7d545823c67cfae7ef4fc7f490154 # v2.81.8
+        with:
+          tool: cargo-audit
+      - run: cargo audit
