@@ -3,7 +3,7 @@
 //!
 //! コンパイルが通ることは「必要なヘッダーが削られていない」ことしか保証しない。余分なヘッダーが残っても
 //! `#pragma once` 等でコンパイルは通ってしまうからだ。そこで併せて、使ったデータ構造とは無関係な (だが
-//! ライブラリ内には実在する) シンボルがバンドルに混入していないことも確かめ、Tree-Shaking が実際に
+//! ライブラリ内には実在する) シンボルがバンドルに混入していないことも確かめ、tree-shaking が実際に
 //! 効いていることを担保する。
 //!
 //! 前提: submodule が取得済みで g++ が利用可能であること (`git submodule update --init`)。
@@ -37,7 +37,7 @@ impl Bundle {
         for symbol in unused {
             assert!(
                 !self.source.contains(symbol),
-                "未使用シンボル `{symbol}` がバンドルに混入している (Tree-Shaking が効いていない)"
+                "未使用シンボル `{symbol}` がバンドルに混入している (tree-shaking が効いていない)"
             );
         }
     }
@@ -89,7 +89,7 @@ fn ac_library_dsu_bundles_compiles_and_runs() {
 #[test]
 fn ac_library_keeps_only_the_structures_in_use() {
     // 同一ライブラリから 2 つの構造 (dsu と fenwick_tree) を使い、使っていない segtree が
-    // 混ざらないこと、つまり Tree-Shaking が構造単位で正しく選別することを確かめる。
+    // 混ざらないこと、つまり tree-shaking が構造単位で正しく選別することを確かめる。
     let source = "#include <atcoder/dsu>\n#include <atcoder/fenwicktree>\n#include <cstdio>\n\
         int main() {\n\
         \x20 atcoder::dsu d(5);\n\
