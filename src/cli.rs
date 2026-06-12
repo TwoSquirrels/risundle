@@ -30,6 +30,10 @@ pub struct BundleArgs {
     #[arg(short = 'n', long = "no-check")]
     pub no_check: bool,
 
+    /// Expand the source without tree-shaking
+    #[arg(long = "no-tree-shaking")]
+    pub no_tree_shaking: bool,
+
     /// C++ source file to bundle
     pub file: PathBuf,
 

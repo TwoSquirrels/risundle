@@ -45,13 +45,11 @@ pub fn run(args: BundleArgs) -> Result<()> {
         .file
         .canonicalize()
         .with_context(|| format!("failed to resolve {}", args.file.display()))?;
-    let unused = unused_origins(
-        &settings,
-        &inventory,
-        &compiler_args,
-        &preprocessed,
-        &target,
-    )?;
+    let unused = if settings.tree_shaking {
+        unused_origins(&settings, &inventory, &compiler_args, &preprocessed, &target)?
+    } else {
+        BTreeSet::new()
+    };
     let target_dir = target.parent();
     let bundled = rewrite::rewrite(
         &preprocessed,
@@ -118,6 +116,7 @@ struct Settings {
     options: Vec<String>,
     keep: BTreeSet<String>,
     embed: bool,
+    tree_shaking: bool,
 }
 
 impl Settings {
@@ -136,6 +135,7 @@ impl Settings {
                 args.keep.iter().cloned().collect()
             },
             embed: args.embed || config.embed,
+            tree_shaking: !args.no_tree_shaking,
         })
     }
 }
