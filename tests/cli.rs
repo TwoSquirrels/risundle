@@ -4,6 +4,8 @@
 
 mod common;
 
+use std::collections::BTreeSet;
+
 use assert_cmd::prelude::*;
 use common::{Sandbox, compile_and_run};
 use predicates::prelude::*;
@@ -167,12 +169,14 @@ fn update_picks_up_new_files() {
         .stdout(predicate::str::contains("B"));
 }
 
-#[test]
-fn bundle_drops_unused_headers_and_keeps_used_ones() {
+/// all.hpp が used/unused を両方束ねるが main は Used だけ使う、という小さなライブラリ
+/// `mylib` を登録し、main.cpp を用意した sandbox を返す。tree-shaking の有無で未使用ヘッダーの
+/// 残り方が反転することを対で検証するための共通 fixture。
+///
+/// メソッド名まで重ならないようにする。逆引きは定義識別子の一致で行うため、`value()` を共有すると
+/// 未使用ヘッダーまで巻き込まれてしまう (それ自体は正しい挙動)。
+fn used_and_unused_library() -> Sandbox {
     let sandbox = Sandbox::new();
-    // all.hpp が used/unused を両方束ねるが、main は Used だけ使う。
-    // メソッド名まで重ならないようにする。逆引きは定義識別子の一致で行うため、`value()` を共有すると
-    // 未使用ヘッダーまで巻き込まれてしまう (それ自体は正しい挙動)。
     sandbox.write(
         "mylib/used.hpp",
         "#pragma once\nstruct Used { int used_value() const { return 42; } };\n",
@@ -194,17 +198,39 @@ fn bundle_drops_unused_headers_and_keeps_used_ones() {
         .assert()
         .success();
 
-    let main = "#include <cstdio>\n#include <all.hpp>\n\
-        int main() { Used u; std::printf(\"%d\\n\", u.used_value()); return 0; }\n";
-    sandbox.write("main.cpp", main);
+    sandbox.write(
+        "main.cpp",
+        "#include <cstdio>\n#include <all.hpp>\n\
+        int main() { Used u; std::printf(\"%d\\n\", u.used_value()); return 0; }\n",
+    );
 
+    sandbox
+}
+
+/// sandbox 内で `risundle <args> main.cpp` を実行し、標準出力を返す。
+fn run_bundle(sandbox: &Sandbox, args: &[&str]) -> String {
     let output = sandbox
         .risundle()
-        .args(["-k", STD, "main.cpp"])
+        .args(args)
+        .arg("main.cpp")
         .output()
         .expect("run bundle");
     assert!(output.status.success(), "bundle failed");
-    let bundled = String::from_utf8(output.stdout).expect("utf-8");
+    String::from_utf8(output.stdout).expect("utf-8")
+}
+
+/// ソース中の `struct` 定義行の集合。出力どうしの包含関係を比べるのに使う。
+fn struct_defs(src: &str) -> BTreeSet<&str> {
+    src.lines()
+        .filter(|line| line.contains("struct "))
+        .collect()
+}
+
+#[test]
+fn bundle_drops_unused_headers_and_keeps_used_ones() {
+    let sandbox = used_and_unused_library();
+
+    let bundled = run_bundle(&sandbox, &["-k", STD]);
 
     assert!(bundled.contains("struct Used"), "使用ヘッダーは残るべき");
     assert!(
@@ -212,6 +238,25 @@ fn bundle_drops_unused_headers_and_keeps_used_ones() {
         "未使用ヘッダーは削られるべき"
     );
     assert_eq!(compile_and_run(&sandbox, &bundled).trim(), "42");
+}
+
+#[test]
+fn bundle_no_tree_shaking_keeps_unused_headers() {
+    let sandbox = used_and_unused_library();
+
+    let shaken = run_bundle(&sandbox, &["-k", STD]);
+    let expanded = run_bundle(&sandbox, &["-k", STD, "--no-tree-shaking"]);
+
+    // 無効版は有効版に残る定義をすべて含む上位集合で、さらに未使用の Unused も残す。
+    assert!(
+        struct_defs(&shaken).is_subset(&struct_defs(&expanded)),
+        "tree-shaking 有効版の定義は無効版に包含されるべき"
+    );
+    assert!(
+        expanded.contains("struct Unused"),
+        "tree-shaking 無効時は未使用ヘッダーも残るべき"
+    );
+    assert_eq!(compile_and_run(&sandbox, &expanded).trim(), "42");
 }
 
 #[test]
@@ -245,13 +290,7 @@ fn bundle_keeps_transitively_required_headers() {
         int main() { Mid m; std::printf(\"%d\\n\", m.mid_value()); return 0; }\n";
     sandbox.write("main.cpp", main);
 
-    let output = sandbox
-        .risundle()
-        .args(["-k", STD, "main.cpp"])
-        .output()
-        .expect("run bundle");
-    assert!(output.status.success(), "bundle failed");
-    let bundled = String::from_utf8(output.stdout).expect("utf-8");
+    let bundled = run_bundle(&sandbox, &["-k", STD]);
 
     assert!(bundled.contains("struct Mid"), "使用ヘッダーは残るべき");
     assert!(
@@ -295,13 +334,7 @@ fn bundle_ignores_identifiers_in_comments_and_strings() {
         int main() { Real r; std::printf(\"%d\\n\", r.real_value()); (void)note; return 0; }\n";
     sandbox.write("main.cpp", main);
 
-    let output = sandbox
-        .risundle()
-        .args(["-k", STD, "main.cpp"])
-        .output()
-        .expect("run bundle");
-    assert!(output.status.success(), "bundle failed");
-    let bundled = String::from_utf8(output.stdout).expect("utf-8");
+    let bundled = run_bundle(&sandbox, &["-k", STD]);
 
     assert!(bundled.contains("struct Real"), "使用ヘッダーは残るべき");
     assert!(
@@ -337,7 +370,7 @@ fn bundle_fails_for_missing_input_file() {
 }
 
 #[test]
-fn bundle_detects_library_changes_and_no_check_bypasses_it() {
+fn bundle_detects_library_changes_unless_verification_is_bypassed() {
     let sandbox = Sandbox::new();
     let header = sandbox.write("mylib/algo.hpp", "#pragma once\nstruct Algo {};\n");
     let lib_root = header.parent().unwrap().to_path_buf();
@@ -364,6 +397,13 @@ fn bundle_detects_library_changes_and_no_check_bypasses_it() {
     sandbox
         .risundle()
         .args(["-k", STD, "--no-check", "main.cpp"])
+        .assert()
+        .success();
+
+    // --no-tree-shaking は識別子タグを使わないため、検証自体が不要になり通る。
+    sandbox
+        .risundle()
+        .args(["-k", STD, "--no-tree-shaking", "main.cpp"])
         .assert()
         .success();
 }
