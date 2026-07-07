@@ -215,7 +215,11 @@ fn run_bundle(sandbox: &Sandbox, args: &[&str]) -> String {
         .arg("main.cpp")
         .output()
         .expect("run bundle");
-    assert!(output.status.success(), "bundle failed");
+    assert!(
+        output.status.success(),
+        "bundle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8(output.stdout).expect("utf-8")
 }
 
@@ -359,7 +363,11 @@ fn bundle_passes_options_after_double_dash_to_compiler() {
         .args(["-k", STD, "main.cpp", "--", "-DRISUNDLE_TEST_ANSWER=0"])
         .output()
         .expect("run bundle");
-    assert!(output.status.success(), "bundle failed");
+    assert!(
+        output.status.success(),
+        "bundle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let bundled = String::from_utf8(output.stdout).expect("utf-8");
     assert!(
         bundled.contains("return 0"),

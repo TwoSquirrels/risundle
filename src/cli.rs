@@ -37,8 +37,8 @@ pub struct BundleArgs {
     /// C++ source file to bundle
     pub file: PathBuf,
 
-    /// Extra options passed through to the compiler
-    #[arg(last = true)]
+    /// Extra options after `--` passed straight to the compiler
+    #[arg(last = true, value_name = "COMPILER OPTIONS")]
     pub options: Vec<String>,
 }
 
