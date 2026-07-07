@@ -74,7 +74,7 @@ oj t && risundle main.cpp > submission.cpp && oj s submission.cpp
 
 ### Leave a library the judge already has as `#include`, unexpanded
 
-Example: the judge provides the AtCoder Library, so you don't want it embedded.
+Example: the judge provides AC Library, so you don't want it embedded.
 
 ```bash
 risundle -k std -k ac-library main.cpp > submission.cpp

@@ -73,7 +73,7 @@ oj t && risundle main.cpp > submission.cpp && oj s submission.cpp
 
 ### ジャッジに入っているライブラリは展開せず `#include` のまま残したい
 
-例: AtCoder Library がジャッジ側にあるので埋め込みたくない。
+例: AC Library がジャッジ側にあるので埋め込みたくない。
 
 ```bash
 risundle -k std -k ac-library main.cpp > submission.cpp
