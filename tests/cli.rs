@@ -215,7 +215,11 @@ fn run_bundle(sandbox: &Sandbox, args: &[&str]) -> String {
         .arg("main.cpp")
         .output()
         .expect("run bundle");
-    assert!(output.status.success(), "bundle failed");
+    assert!(
+        output.status.success(),
+        "bundle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8(output.stdout).expect("utf-8")
 }
 
@@ -342,6 +346,33 @@ fn bundle_ignores_identifiers_in_comments_and_strings() {
         "コメント/文字列内の言及で未使用ヘッダーを巻き込んではいけない"
     );
     assert_eq!(compile_and_run(&sandbox, &bundled).trim(), "5");
+}
+
+#[test]
+fn bundle_passes_options_after_double_dash_to_compiler() {
+    let sandbox = Sandbox::new();
+    sandbox.write(
+        "main.cpp",
+        "#ifdef RISUNDLE_TEST_ANSWER\nint main() { return RISUNDLE_TEST_ANSWER; }\n\
+        #else\n#error RISUNDLE_TEST_ANSWER is not defined\n#endif\n",
+    );
+
+    // -D が届かなければ #error でプリプロセスごと失敗するので、成功 = 受け渡しの証明。
+    let output = sandbox
+        .risundle()
+        .args(["-k", STD, "main.cpp", "--", "-DRISUNDLE_TEST_ANSWER=0"])
+        .output()
+        .expect("run bundle");
+    assert!(
+        output.status.success(),
+        "bundle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bundled = String::from_utf8(output.stdout).expect("utf-8");
+    assert!(
+        bundled.contains("return 0"),
+        "-D で定義したマクロが展開されるべき"
+    );
 }
 
 #[test]
