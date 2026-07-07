@@ -60,9 +60,12 @@ Bundles `<FILE>` and writes the result to standard output.
 | --- | --- |
 | `-c`, `--compiler <PATH>` | Compiler to use (default: `g++`) |
 | `-k`, `--keep <ID>` | Library ID to exclude from tree-shaking (repeatable; default: `std`) |
+| `--no-tree-shaking` | Disable tree-shaking and expand everything (useful as a fallback) |
 | `-e`, `--embed` | Embed the original source as a comment at the top |
 | `-n`, `--no-check` | Skip the hash verification of library updates |
 | `-- <OPTIONS>...` | Pass everything after `--` straight to the compiler |
+
+`--keep` leaves a library unexpanded as an `#include`, whereas `--no-tree-shaking` expands every library but performs no tree-shaking. The two are different.
 
 ```bash
 # Use clang++ and leave AC Library unexpanded, keeping it as #include
