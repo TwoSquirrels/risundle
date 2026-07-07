@@ -99,20 +99,20 @@ g++ -fsyntax-only -std=gnu++20 submission.cpp ||
   risundle --no-tree-shaking main.cpp > submission.cpp
 ```
 
-`-fsyntax-only` は構文チェックだけして実行ファイルを作らないので高速です。フラグはジャッジに合わせてください。
+`-fsyntax-only` は構文チェックだけして実行ファイルを作らないので高速です。フラグはジャッジに合わせてください。また、std 以外のライブラリを keep している場合、その `#include` は素の g++ からは見えないため、`-I ~/ac-library` のように場所を教えてください (教えないと検証が毎回失敗し、フォールバックが常に発動してしまいます)。
 
 毎回打つのが面倒なら、シェルの設定ファイル (`~/.bashrc` など) に関数として書いておけます。
 
 ```bash
 bundle() {
   risundle "$1" > submission.cpp &&
-    g++ -fsyntax-only -std=gnu++20 submission.cpp 2>/dev/null ||
-    { echo 'tree-shaking に失敗したため全展開します' >&2 &&
+    g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+    { echo '検証に失敗したため、全展開版にフォールバックします' >&2 &&
       risundle --no-tree-shaking "$1" > submission.cpp; }
 }
 ```
 
-以後 `bundle main.cpp` だけで済みます。フォールバックが発動したら、tree-shaking の取りこぼしですので [Issue](https://github.com/TwoSquirrels/risundle/issues) で報告してもらえると助かります。
+以後 `bundle main.cpp` だけで済みます。フォールバックが発動したときは、直前に表示された g++ のエラーを確認してください。自分のコードのミスならフォールバック版も通りませんし、tree-shaking の取りこぼし (消えた定義への未定義エラーなど) なら [Issue](https://github.com/TwoSquirrels/risundle/issues) で報告してもらえると助かります。
 
 ### 提出ファイルの先頭に元のソースをコメントで残したい
 
@@ -128,7 +128,7 @@ risundle -e main.cpp > submission.cpp
 
 ```bash
 risundle library update mylib   # 1 つだけ
-risundle library update         # 登録済みぜんぶ
+risundle library update         # 登録済み全部
 ```
 
 反映し忘れてもバンドル時に「変更された」と止まって教えてくれるので、そのとき打てば大丈夫です。
@@ -185,7 +185,7 @@ risundle -n main.cpp               # 急場しのぎ (検証スキップ)
 
 ### バンドル後のファイルがコンパイルエラーになる
 
-まず tree-shaking を切って全部展開すれば、とりあえず提出できます。
+まず tree-shaking を切れば (keep 指定以外が全部展開される)、とりあえず提出できます。
 
 ```bash
 risundle --no-tree-shaking main.cpp > submission.cpp

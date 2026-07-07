@@ -40,13 +40,19 @@ Searches from the directory of `<file>` toward its parents for `.risundlerc.toml
 
 ### Library change detection
 
-For libraries other than `std` that are not marked to be kept (`keep`), the registration-time hash is compared against the current contents. If they differ, it prompts you to run `library update` and exits with an error. Specifying `--no-check` skips the verification itself. Kept libraries and `std` are not verified because they do not use identifier information.
+For libraries other than `std` that are not marked to be kept (`keep`), the registration-time hash is compared against the current contents. If they differ, it prompts you to run `library update` and exits with an error. Specifying `--no-check` skips the verification itself. Kept libraries and `std` are not verified because they do not use identifier information. For the same reason, no library is verified when `--no-tree-shaking` is specified.
 
 The hash is content-based rather than mtime-based, so it does not false-positive on time changes from `git clone` or `cp`, while it can detect file additions, deletions, and renames.
 
 ### Keep
 
 A kept library is not expanded and is left as `#include` (excluded from tree-shaking). `std` is included by default. Keeping `std` adds `-nostdinc` to the compiler and resolves system headers through a dummy.
+
+### Disabling tree-shaking (`--no-tree-shaking`)
+
+With `--no-tree-shaking`, identifier detection, dependency-header reverse lookup, and the `-M` computation of the required set are all skipped, and no header is treated as unused. In other words, every library except the kept ones remains fully expanded. Because identifier tags are never consulted, library change detection is also skipped. Keep and dummy resolution behave the same as usual.
+
+This option is intended as a temporary fallback for when tree-shaking goes wrong, and it cannot be set from `.risundlerc.toml` (allowing it in the configuration file would require a paired CLI option to turn tree-shaking back on, complicating the specification).
 
 ### Output format
 

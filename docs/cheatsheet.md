@@ -50,13 +50,14 @@ You get a `submission.cpp` containing only the parts `main.cpp` actually uses. P
 ### Copy straight to the clipboard without creating a file
 
 ```bash
-risundle main.cpp | clip.exe          # Windows / WSL
-risundle main.cpp | pbcopy            # macOS
-risundle main.cpp | xclip -sel clip   # Linux (X11)
-risundle main.cpp | wl-copy           # Linux (Wayland)
+risundle main.cpp | clip.exe                    # Windows / WSL (ASCII-only sources)
+risundle main.cpp | iconv -t cp932 | clip.exe   # WSL on Japanese Windows (see below)
+risundle main.cpp | pbcopy                      # macOS
+risundle main.cpp | xclip -sel clip             # Linux (X11)
+risundle main.cpp | wl-copy                     # Linux (Wayland)
 ```
 
-Caution on WSL: `clip.exe` interprets its input in the Windows system code page, not UTF-8. If your code contains non-ASCII comments, they get garbled — and line breaks can even disappear, silently changing what the code means. Convert first with `iconv` (e.g. `risundle main.cpp | iconv -t cp932 | clip.exe` on Japanese Windows).
+Caution on WSL: `clip.exe` interprets its input in the Windows system code page, not UTF-8. If your code contains non-ASCII comments, they get garbled — and line breaks can even disappear, silently changing what the code means. Convert first with `iconv -t <your code page>` as shown above (cp932 on Japanese Windows).
 
 ### Run tests and submit in one go (combine with oj)
 
@@ -99,20 +100,20 @@ g++ -fsyntax-only -std=gnu++20 submission.cpp ||
   risundle --no-tree-shaking main.cpp > submission.cpp
 ```
 
-`-fsyntax-only` only checks the syntax without producing a binary, so it is fast. Match the flags to your judge.
+`-fsyntax-only` only checks the syntax without producing a binary, so it is fast. Match the flags to your judge. Also, if you keep a library other than std, its `#include` is invisible to plain g++ — tell it where the library lives with `-I ~/ac-library` or similar (otherwise the check always fails and the fallback fires every time).
 
 If that is too much to type every time, put a function in your shell config (`~/.bashrc` etc.).
 
 ```bash
 bundle() {
   risundle "$1" > submission.cpp &&
-    g++ -fsyntax-only -std=gnu++20 submission.cpp 2>/dev/null ||
-    { echo 'tree-shaking failed; expanding everything' >&2 &&
+    g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+    { echo 'verification failed; falling back to full expansion' >&2 &&
       risundle --no-tree-shaking "$1" > submission.cpp; }
 }
 ```
 
-From then on, `bundle main.cpp` is all you need. If the fallback ever fires, tree-shaking missed something — a report in the [issues](https://github.com/TwoSquirrels/risundle/issues) would be much appreciated.
+From then on, `bundle main.cpp` is all you need. When the fallback fires, check the g++ error printed right above it: a mistake in your own code means the fallback output won't compile either, while an undefined reference to a dropped definition means tree-shaking missed something — a report in the [issues](https://github.com/TwoSquirrels/risundle/issues) would be much appreciated.
 
 ### Keep the original source as a comment at the top of the submission
 
@@ -185,7 +186,7 @@ risundle -n main.cpp               # quick and dirty (skips verification)
 
 ### The bundled file fails to compile
 
-Turn off tree-shaking and expand everything — that gets you something submittable for now.
+Turn off tree-shaking (everything except kept libraries gets expanded) — that gets you something submittable for now.
 
 ```bash
 risundle --no-tree-shaking main.cpp > submission.cpp

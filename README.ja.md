@@ -60,12 +60,12 @@ risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]
 | --- | --- |
 | `-c`, `--compiler <PATH>` | 使用するコンパイラ (既定: `g++`) |
 | `-k`, `--keep <ID>` | tree-shaking の対象外にするライブラリ ID (繰り返し可。既定: `std`) |
-| `--no-tree-shaking` | tree-shaking を無効化し、すべて展開する (フォールバック用) |
+| `--no-tree-shaking` | tree-shaking を無効化し、keep 指定以外をすべて展開する (フォールバック用) |
 | `-e`, `--embed` | 元のソースを先頭にコメントとして埋め込む |
 | `-n`, `--no-check` | ライブラリ更新のハッシュ検証をスキップする |
 | `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す |
 
-`--keep` はライブラリを展開せず `#include` のまま残しますが、`--no-tree-shaking` は全ライブラリを展開した上で tree-shaking を行いません。両者は別物です。
+`--keep` はライブラリを展開せず `#include` のまま残しますが、`--no-tree-shaking` は keep 指定を除く全ライブラリを展開した上で tree-shaking を行いません。両者は別物で、併用もできます。
 
 ```bash
 # clang++ を使い、AC Library も展開せず #include のまま残す
