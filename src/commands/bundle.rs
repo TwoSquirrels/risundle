@@ -6,6 +6,9 @@
 //! 3. `<file>` 由来部分から識別子を検出 → 逆引きで依存ヘッダーを特定
 //! 4. 依存ヘッダーに `-M` を実行 → 必要集合を得て、出力中の不要ヘッダーを判定
 //! 5. 不要行の削除・ダミー pragma の復元・クレジット/埋め込みを施して出力
+//!
+//! `--no-tree-shaking` 時は識別子タグを一切使わないため、手順 1 のハッシュ検証と手順 3〜4 を
+//! まるごとスキップする (不要ヘッダー無しとして扱う)。
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -34,7 +37,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
-    if !args.no_check {
+    if !args.no_check && !args.no_tree_shaking {
         inventory.verify()?;
     }
 
@@ -45,7 +48,9 @@ pub fn run(args: BundleArgs) -> Result<()> {
         .file
         .canonicalize()
         .with_context(|| format!("failed to resolve {}", args.file.display()))?;
-    let unused = if settings.tree_shaking {
+    let unused = if args.no_tree_shaking {
+        BTreeSet::new()
+    } else {
         unused_origins(
             &settings,
             &inventory,
@@ -53,8 +58,6 @@ pub fn run(args: BundleArgs) -> Result<()> {
             &preprocessed,
             &target,
         )?
-    } else {
-        BTreeSet::new()
     };
     let target_dir = target.parent();
     let bundled = rewrite::rewrite(
@@ -122,7 +125,6 @@ struct Settings {
     options: Vec<String>,
     keep: BTreeSet<String>,
     embed: bool,
-    tree_shaking: bool,
 }
 
 impl Settings {
@@ -141,7 +143,6 @@ impl Settings {
                 args.keep.iter().cloned().collect()
             },
             embed: args.embed || config.embed,
-            tree_shaking: !args.no_tree_shaking,
         })
     }
 }

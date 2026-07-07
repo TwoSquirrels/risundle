@@ -370,7 +370,7 @@ fn bundle_fails_for_missing_input_file() {
 }
 
 #[test]
-fn bundle_detects_library_changes_and_no_check_bypasses_it() {
+fn bundle_detects_library_changes_unless_verification_is_bypassed() {
     let sandbox = Sandbox::new();
     let header = sandbox.write("mylib/algo.hpp", "#pragma once\nstruct Algo {};\n");
     let lib_root = header.parent().unwrap().to_path_buf();
@@ -397,6 +397,13 @@ fn bundle_detects_library_changes_and_no_check_bypasses_it() {
     sandbox
         .risundle()
         .args(["-k", STD, "--no-check", "main.cpp"])
+        .assert()
+        .success();
+
+    // --no-tree-shaking は識別子タグを使わないため、検証自体が不要になり通る。
+    sandbox
+        .risundle()
+        .args(["-k", STD, "--no-tree-shaking", "main.cpp"])
         .assert()
         .success();
 }
