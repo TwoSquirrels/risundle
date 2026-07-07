@@ -221,7 +221,9 @@ fn run_bundle(sandbox: &Sandbox, args: &[&str]) -> String {
 
 /// ソース中の `struct` 定義行の集合。出力どうしの包含関係を比べるのに使う。
 fn struct_defs(src: &str) -> BTreeSet<&str> {
-    src.lines().filter(|line| line.contains("struct ")).collect()
+    src.lines()
+        .filter(|line| line.contains("struct "))
+        .collect()
 }
 
 #[test]

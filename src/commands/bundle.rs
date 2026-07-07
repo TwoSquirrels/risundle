@@ -46,7 +46,13 @@ pub fn run(args: BundleArgs) -> Result<()> {
         .canonicalize()
         .with_context(|| format!("failed to resolve {}", args.file.display()))?;
     let unused = if settings.tree_shaking {
-        unused_origins(&settings, &inventory, &compiler_args, &preprocessed, &target)?
+        unused_origins(
+            &settings,
+            &inventory,
+            &compiler_args,
+            &preprocessed,
+            &target,
+        )?
     } else {
         BTreeSet::new()
     };
