@@ -112,12 +112,12 @@ embed = false
 
 ## ベンチマーク
 
-IWYU (include-what-you-use 0.21) と実行時間を比較しました。環境は WSL2 (Ubuntu 24.04、Intel Core 7 240H、g++ 14.2) です。
+IWYU (include-what-you-use 0.21) と実行時間を比較しました。環境は WSL 2 (Ubuntu 24.04、Intel Core 7 240H、g++ 14.2) です。
 
 | ライブラリ | risundle | IWYU |
 | --- | --- | --- |
 | AC Library | 0.031 秒 | 0.491 秒 |
-| Nyaan Library | 0.033 秒 | 2.085 秒 |
+| Nyaan's Library | 0.033 秒 | 2.085 秒 |
 
 risundle はライブラリ規模によらずほぼ一定で、IWYU はヘッダー数が増えるほど伸びます。IWYU は clang の AST をフル構築するのに対し、risundle はコンパイラのプリプロセス (`-E`/`-M`) だけで完結するためです。なお IWYU と risundle は目的が異なり (IWYU は `#include` の修正提案、risundle はバンドル)、同じ問題を解くツールではありません。
 

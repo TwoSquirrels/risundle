@@ -112,12 +112,12 @@ The above are the default values. Omitted items are filled in with these default
 
 ## Benchmarks
 
-We compared execution time against IWYU (include-what-you-use 0.21). The environment was WSL2 (Ubuntu 24.04, Intel Core 7 240H, g++ 14.2).
+We compared execution time against IWYU (include-what-you-use 0.21). The environment was WSL 2 (Ubuntu 24.04, Intel Core 7 240H, g++ 14.2).
 
 | Library | risundle | IWYU |
 | --- | --- | --- |
 | AC Library | 0.031 s | 0.491 s |
-| Nyaan Library | 0.033 s | 2.085 s |
+| Nyaan's Library | 0.033 s | 2.085 s |
 
 risundle stays nearly constant regardless of library size, while IWYU grows as the number of headers increases. This is because IWYU fully builds the clang AST, whereas risundle relies solely on the compiler's preprocessing (`-E`/`-M`). Note that IWYU and risundle serve different purposes (IWYU suggests `#include` fixes; risundle bundles) and do not solve the same problem.
 
