@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tags {
@@ -30,6 +30,11 @@ pub enum TagsKind {
         hash: String,
         // 出力順を安定させるため BTreeMap を使う (HashMap だと tags.json の diff が毎回ぶれる)。
         files: BTreeMap<String, Vec<String>>,
+        /// ファイルごとの「実装先の型名」一覧。クラス外の修飾付き定義 (`X<...>::method`) や明示的
+        /// 特殊化 (`template <> struct T<...>`) が対象とする型名で、`files` (定義識別子) と対になる。
+        /// 定義識別子に現れない依存 (演算子オーバーロード等) をバンドル時に逆引きするために使う。
+        /// 実装先を持たないファイルはキー自体を持たない。
+        implements: BTreeMap<String, Vec<String>>,
     },
 }
 
@@ -68,6 +73,8 @@ struct RawTags {
     hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     files: Option<BTreeMap<String, Vec<String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    implements: Option<BTreeMap<String, Vec<String>>>,
 }
 
 impl TryFrom<RawTags> for Tags {
@@ -82,8 +89,14 @@ impl TryFrom<RawTags> for Tags {
             );
         }
         let kind = match (raw.compilers, raw.hash, raw.files) {
-            (Some(compilers), None, None) => TagsKind::Std { compilers },
-            (None, Some(hash), Some(files)) => TagsKind::Library { hash, files },
+            (Some(compilers), None, None) if raw.implements.is_none() => {
+                TagsKind::Std { compilers }
+            }
+            (None, Some(hash), Some(files)) => TagsKind::Library {
+                hash,
+                files,
+                implements: raw.implements.unwrap_or_default(),
+            },
             _ => {
                 bail!(
                     "invalid tags.json kind (std requires only compilers; a regular library requires both hash and files)"
@@ -99,9 +112,18 @@ impl TryFrom<RawTags> for Tags {
 
 impl From<&Tags> for RawTags {
     fn from(tags: &Tags) -> Self {
-        let (compilers, hash, files) = match &tags.kind {
-            TagsKind::Std { compilers } => (Some(compilers.clone()), None, None),
-            TagsKind::Library { hash, files } => (None, Some(hash.clone()), Some(files.clone())),
+        let (compilers, hash, files, implements) = match &tags.kind {
+            TagsKind::Std { compilers } => (Some(compilers.clone()), None, None, None),
+            TagsKind::Library {
+                hash,
+                files,
+                implements,
+            } => (
+                None,
+                Some(hash.clone()),
+                Some(files.clone()),
+                Some(implements.clone()),
+            ),
         };
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
@@ -109,6 +131,7 @@ impl From<&Tags> for RawTags {
             compilers,
             hash,
             files,
+            implements,
         }
     }
 }
@@ -128,6 +151,10 @@ mod tests {
                     ("atcoder/modint.hpp".to_owned(), vec!["modint".to_owned()]),
                     ("atcoder/segtree.hpp".to_owned(), vec!["segtree".to_owned()]),
                 ]),
+                implements: BTreeMap::from([(
+                    "atcoder/modint_impl.hpp".to_owned(),
+                    vec!["modint".to_owned()],
+                )]),
             },
         }
     }
@@ -171,6 +198,7 @@ mod tests {
             kind: TagsKind::Library {
                 hash: "sha256:abc".to_owned(),
                 files: BTreeMap::new(),
+                implements: BTreeMap::new(),
             },
         };
         let json = tags.to_json().unwrap();
@@ -179,8 +207,25 @@ mod tests {
     }
 
     #[test]
+    fn library_without_implements_parses_as_empty() {
+        // v2 で implements を省いた JSON も空として受理する (手書き・移行時の寛容さ)。
+        let json = r#"{ "schema_version": 2, "path": "/p", "hash": "sha256:abc", "files": {} }"#;
+        let tags = Tags::from_json(json).unwrap();
+        assert!(matches!(
+            tags.kind,
+            TagsKind::Library { ref implements, .. } if implements.is_empty()
+        ));
+    }
+
+    #[test]
+    fn std_with_implements_is_rejected() {
+        let json = r#"{ "schema_version": 2, "path": "/p", "compilers": ["/usr/bin/g++"], "implements": {} }"#;
+        assert!(Tags::from_json(json).is_err());
+    }
+
+    #[test]
     fn parses_spec_std_example() {
-        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
+        let json = r#"{ "schema_version": 2, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
         let tags = Tags::from_json(json).unwrap();
         assert_eq!(
             tags.kind,
@@ -192,40 +237,42 @@ mod tests {
 
     #[test]
     fn unsupported_schema_version_is_rejected() {
-        let json = r#"{ "schema_version": 2, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
+        // v1 (implements 導入前) は再登録を促すエラーになる。
+        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
         let error = Tags::from_json(json).unwrap_err();
         assert!(error.to_string().contains("schema_version"));
+        assert!(error.to_string().contains("library update"));
     }
 
     #[test]
     fn std_without_compilers_is_rejected() {
         // compilers も hash/files も無い旧 std 形式は不正 (add-std での再登録が必要)。
-        let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12" }"#;
+        let json = r#"{ "schema_version": 2, "path": "/usr/include/c++/12" }"#;
         assert!(Tags::from_json(json).is_err());
     }
 
     #[test]
     fn hash_without_files_is_rejected() {
-        let json = r#"{ "schema_version": 1, "path": "/p", "hash": "sha256:abc" }"#;
+        let json = r#"{ "schema_version": 2, "path": "/p", "hash": "sha256:abc" }"#;
         assert!(Tags::from_json(json).is_err());
     }
 
     #[test]
     fn files_without_hash_is_rejected() {
-        let json = r#"{ "schema_version": 1, "path": "/p", "files": {} }"#;
+        let json = r#"{ "schema_version": 2, "path": "/p", "files": {} }"#;
         assert!(Tags::from_json(json).is_err());
     }
 
     #[test]
     fn std_with_hash_is_rejected() {
         // std (compilers) と通常ライブラリ (hash/files) の情報が混在する形式は不正。
-        let json = r#"{ "schema_version": 1, "path": "/p", "compilers": ["/usr/bin/g++"], "hash": "sha256:abc" }"#;
+        let json = r#"{ "schema_version": 2, "path": "/p", "compilers": ["/usr/bin/g++"], "hash": "sha256:abc" }"#;
         assert!(Tags::from_json(json).is_err());
     }
 
     #[test]
     fn unknown_field_is_rejected() {
-        let json = r#"{ "schema_version": 1, "path": "/p", "unknown": true }"#;
+        let json = r#"{ "schema_version": 2, "path": "/p", "unknown": true }"#;
         assert!(Tags::from_json(json).is_err());
     }
 

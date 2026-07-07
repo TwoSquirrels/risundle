@@ -192,9 +192,15 @@ mod tests {
     }
 
     fn library_kind(files: &[(&str, &[&str])]) -> TagsKind {
-        TagsKind::Library {
-            hash: "sha256:placeholder".to_owned(),
-            files: files
+        library_kind_with_implements(files, &[])
+    }
+
+    fn library_kind_with_implements(
+        files: &[(&str, &[&str])],
+        implements: &[(&str, &[&str])],
+    ) -> TagsKind {
+        let to_map = |entries: &[(&str, &[&str])]| {
+            entries
                 .iter()
                 .map(|(key, names)| {
                     (
@@ -202,7 +208,12 @@ mod tests {
                         names.iter().map(|n| (*n).to_owned()).collect(),
                     )
                 })
-                .collect(),
+                .collect()
+        };
+        TagsKind::Library {
+            hash: "sha256:placeholder".to_owned(),
+            files: to_map(files),
+            implements: to_map(implements),
         }
     }
 
@@ -382,6 +393,7 @@ mod tests {
             kind: TagsKind::Library {
                 hash: real_hash,
                 files,
+                implements: BTreeMap::new(),
             },
         }
         .save(&store.tags_json("lib"))

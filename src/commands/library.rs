@@ -135,7 +135,11 @@ fn register_library(store: &LocalStore, id: &str, source_root: &Path) -> Result<
     let hash = hash::aggregate(source_root)?;
     Tags {
         path: source_root.to_path_buf(),
-        kind: TagsKind::Library { hash, files },
+        kind: TagsKind::Library {
+            hash,
+            files,
+            implements: Default::default(),
+        },
     }
     .save(&store.tags_json(id))
 }
@@ -357,7 +361,7 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
                 println!("  {}", compiler.display());
             }
         }
-        TagsKind::Library { hash, files } => {
+        TagsKind::Library { hash, files, .. } => {
             show_field("Kind", "library");
             show_field(
                 "Files",
@@ -408,7 +412,7 @@ mod tests {
         assert!(store.is_registered("ac-library"));
         let tags = Tags::load(&store.tags_json("ac-library")).unwrap();
         match tags.kind {
-            TagsKind::Library { hash, files } => {
+            TagsKind::Library { hash, files, .. } => {
                 assert!(hash.starts_with("sha256:"));
                 assert!(files["atcoder/modint.hpp"].contains(&"modint".to_owned()));
             }
