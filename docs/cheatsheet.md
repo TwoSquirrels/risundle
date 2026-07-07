@@ -96,18 +96,18 @@ Tree-shaking is an approximation, so on rare occasions it can drop a needed defi
 
 ```bash
 risundle main.cpp > submission.cpp
-g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+g++ -std=gnu++20 -o /dev/null submission.cpp ||
   risundle --no-tree-shaking main.cpp > submission.cpp
 ```
 
-`-fsyntax-only` only checks the syntax without producing a binary, so it is fast. Match the flags to your judge. Also, if you keep a library other than std, its `#include` is invisible to plain g++ — tell it where the library lives with `-I ~/ac-library` or similar (otherwise the check always fails and the fallback fires every time).
+Going all the way through linking also catches undefined references when only a definition got dropped (the binary itself is not needed, so it is discarded to `-o /dev/null`). Match the flags to your judge. Also, if you keep a library other than std, its `#include` is invisible to plain g++ — tell it where the library lives with `-I ~/ac-library` or similar (otherwise the check always fails and the fallback fires every time).
 
 If that is too much to type every time, put a function in your shell config (`~/.bashrc` etc.).
 
 ```bash
 bundle() {
   risundle "$1" > submission.cpp &&
-    g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+    g++ -std=gnu++20 -o /dev/null submission.cpp ||
     { echo 'verification failed; falling back to full expansion' >&2 &&
       risundle --no-tree-shaking "$1" > submission.cpp; }
 }

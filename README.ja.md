@@ -65,7 +65,7 @@ risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]
 | `-n`, `--no-check` | ライブラリ更新のハッシュ検証をスキップする |
 | `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す |
 
-`--keep` はライブラリを展開せず `#include` のまま残しますが、`--no-tree-shaking` は keep 指定を除く全ライブラリを展開した上で tree-shaking を行いません。両者は別物で、併用もできます。
+`--keep` はライブラリを展開せず `#include` のまま残しますが、`--no-tree-shaking` は keep 指定を除く全ライブラリを展開した上で tree-shaking を行いません。両者は別物で、併用もできます。なお `--no-tree-shaking` は識別子情報を使わないため、ライブラリ更新のハッシュ検証も行いません。
 
 ```bash
 # clang++ を使い、AC Library も展開せず #include のまま残す

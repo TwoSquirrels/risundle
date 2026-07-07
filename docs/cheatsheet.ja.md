@@ -95,18 +95,18 @@ tree-shaking は近似なので、まれに必要な定義を削ることがあ�
 
 ```bash
 risundle main.cpp > submission.cpp
-g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+g++ -std=gnu++20 -o /dev/null submission.cpp ||
   risundle --no-tree-shaking main.cpp > submission.cpp
 ```
 
-`-fsyntax-only` は構文チェックだけして実行ファイルを作らないので高速です。フラグはジャッジに合わせてください。また、std 以外のライブラリを keep している場合、その `#include` は素の g++ からは見えないため、`-I ~/ac-library` のように場所を教えてください (教えないと検証が毎回失敗し、フォールバックが常に発動してしまいます)。
+リンクまで通すことで、定義だけが消えたときの undefined reference も検出できます (実行ファイルは要らないので `-o /dev/null` に捨てています)。フラグはジャッジに合わせてください。また、std 以外のライブラリを keep している場合、その `#include` は素の g++ からは見えないため、`-I ~/ac-library` のように場所を教えてください (教えないと検証が毎回失敗し、フォールバックが常に発動してしまいます)。
 
 毎回打つのが面倒なら、シェルの設定ファイル (`~/.bashrc` など) に関数として書いておけます。
 
 ```bash
 bundle() {
   risundle "$1" > submission.cpp &&
-    g++ -fsyntax-only -std=gnu++20 submission.cpp ||
+    g++ -std=gnu++20 -o /dev/null submission.cpp ||
     { echo '検証に失敗したため、全展開版にフォールバックします' >&2 &&
       risundle --no-tree-shaking "$1" > submission.cpp; }
 }
