@@ -38,7 +38,7 @@ pub struct BundleArgs {
     pub file: PathBuf,
 
     /// Extra options passed through to the compiler
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    #[arg(last = true)]
     pub options: Vec<String>,
 }
 
@@ -89,4 +89,29 @@ pub enum LibraryCommand {
         #[arg(short, long)]
         verbose: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn options_after_file_are_parsed_as_risundle_flags() {
+        let args = BundleArgs::try_parse_from(["risundle", "main.cpp", "-e"]).unwrap();
+        assert!(args.embed);
+        assert!(args.options.is_empty());
+    }
+
+    #[test]
+    fn double_dash_separates_compiler_options() {
+        let args =
+            BundleArgs::try_parse_from(["risundle", "main.cpp", "--", "-std=gnu++20", "-O2"])
+                .unwrap();
+        assert_eq!(args.options, ["-std=gnu++20", "-O2"]);
+    }
+
+    #[test]
+    fn hyphen_arguments_before_double_dash_are_rejected() {
+        assert!(BundleArgs::try_parse_from(["risundle", "main.cpp", "-O2"]).is_err());
+    }
 }
