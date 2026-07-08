@@ -1,6 +1,7 @@
 //! 登録済みライブラリの突き合わせ用インベントリ。`tags.json` を読み込み、バンドルの各工程が必要と
-//! する 4 つの問い合わせに答える: インクルードパスの組み立て (`-I`)、`-nostdinc` の要否、ハッシュ
-//! 検証、そして `識別子 → 依存ヘッダー` の逆引き。維持指定 (keep) と種別 (`std` / 通常) を保持し、
+//! する問い合わせに答える: インクルードパスの組み立て (`-I`)、`-nostdinc` の要否、ハッシュ検証、
+//! `識別子 → 依存ヘッダー` の逆引き、そして `定義した型 → その実装ファイル` の逆引き。維持指定
+//! (keep) と種別 (`std` / 通常) を保持し、
 //! 「維持指定された (tree-shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
 //! 区別を、各メソッドで一貫して適用する。
 
@@ -127,7 +128,7 @@ impl Inventory {
     ///
     /// 「実装している」は登録時に記録した実装先の型名 (`tags.json` の `implements`) と、`needed` 側の
     /// 定義識別子との照合で判定する。演算子オーバーロードのような、定義識別子として現れない依存を
-    /// 拾うための逆引き (#21)。
+    /// 拾うための逆引き。
     pub fn implementation_files(
         &self,
         needed: &BTreeSet<PathBuf>,
@@ -346,7 +347,6 @@ mod tests {
 
     #[test]
     fn implementation_files_are_found_via_needed_definitions() {
-        // fps.hpp が FPS を定義し、fps-impl.hpp が FPS を実装先に持つ (#21 の FPS パターン)。
         let local = TempDir::new().unwrap();
         let store = LocalStore::with_root(local.path());
         let lib_path = register(
@@ -372,7 +372,7 @@ mod tests {
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
         let files = inventory.implementation_files(&BTreeSet::from([fps]), &present);
 
-        // FPS の実装ファイルだけが選ばれる。Tree の実装や無関係な定義ファイルは巻き込まない。
+        // needed が定義する FPS の実装ファイルだけが選ばれ、別の型 (Tree) の実装は巻き込まない。
         assert_eq!(files, BTreeSet::from([implementation]));
     }
 
@@ -388,7 +388,8 @@ mod tests {
         let fps = lib_path.join("fps.hpp");
 
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
-        // fps-impl.hpp はユーザーが include しておらず present に無いので、注入はしない (#10 の領分)。
+        // present に無い (= include されていない) ファイルは、実装先が一致しても補わない。
+        // バンドル入力に現れないファイルの注入は本メソッドの責務外。
         assert!(
             inventory
                 .implementation_files(&BTreeSet::from([fps.clone()]), &BTreeSet::from([fps]))

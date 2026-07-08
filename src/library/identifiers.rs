@@ -52,8 +52,8 @@ pub struct Enumeration {
     /// 各ファイルの「実装先の型名」(tags.json の `implements`)。クラス外の修飾付き定義
     /// (`X<...>::method`) の修飾側や、明示的特殊化 (`template <> struct T<...>`) の主テンプレート名。
     /// 演算子オーバーロードのように定義識別子が残らない実装ファイルでも、依存を逆引きできるように
-    /// する (#21)。namespace 修飾 (`void ns::f()`) の namespace 名も混ざるが、namespace 名は定義
-    /// 識別子として登録されない (上記参照) ため逆引きで一致することがなく、無害である。
+    /// する。namespace 修飾 (`void ns::f()`) の namespace 名も混ざるが、namespace 名は定義
+    /// 識別子として登録されない ([`NAME_NODES`] 参照) ため逆引きで一致することがなく、無害である。
     pub implements: BTreeMap<String, Vec<String>>,
 }
 
@@ -195,8 +195,8 @@ fn collect_implement_target(node: Node, source: &[u8], implements: &mut BTreeSet
                 collect_implement_target(name, source, implements);
             }
         }
-        // decltype や依存名などの複雑な修飾は、実装先を静的に特定できないため拾わない
-        // (拾い漏れは従来通りの挙動に留まるだけで、悪化はしない)。
+        // decltype や依存名などの複雑な修飾は、実装先を静的に特定できないため拾わない。
+        // 拾い漏れてもこの逆引きが効かないだけで、定義識別子による依存検出には影響しない。
         _ => {}
     }
 }
@@ -366,7 +366,6 @@ mod tests {
 
     #[test]
     fn out_of_class_definition_records_the_implement_target() {
-        // クラス外定義 `Foo::bar` は、bar を定義識別子に、Foo を実装先に記録する。
         let source = "void Foo::bar() { }";
         assert_eq!(names_in(source), vec!["bar".to_owned()]);
         assert_eq!(implements_in(source), vec!["Foo".to_owned()]);
@@ -374,7 +373,7 @@ mod tests {
 
     #[test]
     fn templated_out_of_class_definition_records_the_primary_name() {
-        // FPS パターン (#21)。テンプレート実引数は実装先ではないので mint は拾わない。
+        // テンプレート実引数 (mint) は参照であって実装先ではないので拾わない。
         let source = "template <typename mint>\n\
              void FormalPowerSeries<mint>::set_fft() { }";
         assert_eq!(implements_in(source), vec!["FormalPowerSeries".to_owned()]);
@@ -382,7 +381,7 @@ mod tests {
 
     #[test]
     fn operator_only_file_still_gets_an_implement_target() {
-        // 演算子だけの実装ファイルは定義識別子が空になるが、実装先は残る。これが #21 の核心。
+        // 演算子だけの実装ファイルは定義識別子が空になるため、実装先の記録だけが依存の手がかりになる。
         let source = "template <typename T>\n\
              FormalPowerSeries<T>& FormalPowerSeries<T>::operator*=(const FormalPowerSeries<T>& r) { return *this; }";
         assert_eq!(names_in(source), Vec::<String>::new());
