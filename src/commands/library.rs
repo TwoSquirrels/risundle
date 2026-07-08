@@ -131,14 +131,14 @@ fn register_library(store: &LocalStore, id: &str, source_root: &Path) -> Result<
     dummy::generate(source_root, &store.dummy_dir(id))?;
 
     // 識別子抽出はファイル数に比例して時間がかかるため、処理中のファイル名を逐次表示する。
-    let files = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
+    let names = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
     let hash = hash::aggregate(source_root)?;
     Tags {
         path: source_root.to_path_buf(),
         kind: TagsKind::Library {
             hash,
-            files,
-            implements: Default::default(),
+            files: names.definitions,
+            implements: names.implements,
         },
     }
     .save(&store.tags_json(id))
@@ -361,7 +361,11 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
                 println!("  {}", compiler.display());
             }
         }
-        TagsKind::Library { hash, files, .. } => {
+        TagsKind::Library {
+            hash,
+            files,
+            implements,
+        } => {
             show_field("Kind", "library");
             show_field(
                 "Files",
@@ -372,6 +376,12 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
                 println!("Definitions:");
                 for (file, names) in files {
                     println!("  {file}: {}", names.join(", "));
+                }
+                if !implements.is_empty() {
+                    println!("Implements:");
+                    for (file, names) in implements {
+                        println!("  {file}: {}", names.join(", "));
+                    }
                 }
             }
         }
