@@ -17,7 +17,7 @@ This document goes deeper than the README, covering each command's behavior, err
 - `add <id> <path>` — Register `<path>` as an include path.
     - Errors if `<id>` is `std` (use `add-std` for the standard library).
     - Errors if the same `<id>` is already registered.
-    - On registration, records the list of defined identifiers for each file and an aggregate hash computed from the contents under `<path>`.
+    - On registration, records the list of defined identifiers for each file, the list of implementation target type names, and an aggregate hash computed from the contents under `<path>`. An implementation target is the qualifier of an out-of-class qualified definition (`X<...>::method`) or the primary template name of an explicit specialization (`template <> struct T<...>`), expressing "which type this file implements".
 - `add-std [<compiler>]` — Register the standard library (`std`).
     - Auto-detects the system include search paths of `<compiler>` (default `g++`).
     - Calling it repeatedly adds that compiler to the recognized set each time (additive). It merges the search paths of all compilers in the set into one, so you can switch between multiple compilers.
@@ -28,7 +28,7 @@ This document goes deeper than the README, covering each command's behavior, err
 - `list` — List the IDs and include paths of registered libraries.
 - `show [-v | --verbose] <id>` — Show details of a library. Errors if not registered.
     - By default, shows the ID, include path, kind, and the number of files that have defined identifiers.
-    - With `-v`, also shows the aggregate hash and the list of defined identifiers per file.
+    - With `-v`, also shows the aggregate hash, the list of defined identifiers per file, and the implementation target type names.
 
 ## Bundling
 
@@ -54,6 +54,16 @@ With `--no-tree-shaking`, identifier detection, dependency-header reverse lookup
 
 This option is intended as a temporary fallback for when tree-shaking goes wrong, and it cannot be set from `.risundlerc.toml` (allowing it in the configuration file would require a paired CLI option to turn tree-shaking back on, complicating the specification).
 
+### Keeping implementation files
+
+In a library that splits declarations and implementations across files, some dependencies cannot be detected as identifiers — operator overloads are the typical case (the user writes `f * g`; the token `operator*=` never appears). In addition to the identifier reverse lookup, the following rule therefore applies.
+
+> A file whose implementation target names include a type defined by an already-needed file is also considered needed.
+
+Whenever new files become needed, the `-M` required set is recomputed, repeating until nothing is added (the candidates are limited to files present in the output and grow monotonically, so this always terminates). The matching only considers files present in the output; implementation files that are not included are never pulled in.
+
+Qualifiers whose target cannot be determined statically (decltype, dependent names, etc.) are not recorded and are outside this rule. Files with neither a named definition nor an out-of-class implementation (e.g. a file defining only free-function operators) are also outside it and may still be dropped by tree-shaking.
+
 ### Output format
 
 - The first line carries the credit `// Bundled with risundle v<version>`.
@@ -72,12 +82,15 @@ When `<id>` is not `std`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "path": "/usr/local/include",
   "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "files": {
     "atcoder/modint.hpp": ["modint", "modint_base", "modint_common"],
     "atcoder/segtree.hpp": ["segtree"]
+  },
+  "implements": {
+    "atcoder/modint_impl.hpp": ["modint"]
   }
 }
 ```
@@ -86,7 +99,7 @@ When `<id>` is `std`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "path": "/usr/include/c++/12",
   "compilers": ["/usr/bin/x86_64-linux-gnu-g++-14"]
 }
@@ -97,3 +110,4 @@ When `<id>` is `std`:
 - `compilers`: `std` only. The set of compilers that `std` was registered with (normalized to the absolute paths of the actual binaries).
 - `hash`: An aggregate hash computed from the relative paths and contents of all files under `path`. Not present for `std`.
 - `files`: Keys are paths relative to the library root, and values are the arrays of identifier names that the file defines. Not present for `std`. Non-`std` libraries always carry an empty object `{}` even when there are no identifiers, so they are structurally distinguishable from `std`.
+- `implements`: Keys are paths relative to the library root, and values are the arrays of implementation target type names of the file. Files without implementation targets have no key. Not present for `std`. Treated as empty when the key is missing on load.
