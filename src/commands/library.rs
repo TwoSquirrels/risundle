@@ -109,10 +109,11 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     if !store.is_registered(STD_ID) {
         return Ok(Vec::new());
     }
-    match Tags::load(&store.tags_json(STD_ID))?.kind {
-        TagsKind::Std { compilers } => Ok(compilers),
-        TagsKind::Library { .. } => Ok(Vec::new()),
-    }
+    // add-std は登録を作り直すため、既存の tags.json からは認識コンパイラ集合しか使わない。
+    // update と同じく、スキーマの合わない登録からでも集合を引き継げるよう検証せずに読む。
+    Ok(MigrationSource::load(&store.tags_json(STD_ID))?
+        .compilers
+        .unwrap_or_default())
 }
 
 fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
@@ -606,6 +607,26 @@ mod tests {
             Tags::load(&tags_path).is_ok(),
             "update 後は現行スキーマで読めるべき"
         );
+    }
+
+    #[test]
+    fn add_std_keeps_the_compiler_set_from_an_older_schema() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let Ok(g) = resolve_compiler(Path::new("g++")) else {
+            return; // g++ が無い環境ではスキップ
+        };
+        add_std(&store, Some(&g)).unwrap();
+
+        let tags_path = store.tags_json("std");
+        let old_json = fs::read_to_string(&tags_path)
+            .unwrap()
+            .replace("\"schema_version\": 2", "\"schema_version\": 1");
+        fs::write(&tags_path, old_json).unwrap();
+
+        // スキーマの合わない登録があっても、add-std は集合を引き継いで作り直せる。
+        add_std(&store, Some(&g)).unwrap();
+        assert!(Tags::load(&tags_path).is_ok());
     }
 
     #[test]
