@@ -4,7 +4,7 @@
 //! 「維持指定された (tree-shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
 //! 区別を、各メソッドで一貫して適用する。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -123,20 +123,69 @@ impl Inventory {
             .collect()
     }
 
+    /// `present` のうち、`needed` 内のいずれかのファイルが定義する型を実装しているファイルを返す。
+    ///
+    /// 「実装している」は登録時に記録した実装先の型名 (`tags.json` の `implements`) と、`needed` 側の
+    /// 定義識別子との照合で判定する。演算子オーバーロードのような、定義識別子として現れない依存を
+    /// 拾うための逆引き (#21)。
+    pub fn implementation_files(
+        &self,
+        needed: &BTreeSet<PathBuf>,
+        present: &BTreeSet<PathBuf>,
+    ) -> BTreeSet<PathBuf> {
+        let needed_names: BTreeSet<&String> = needed
+            .iter()
+            .filter_map(|path| self.defined_identifiers(path))
+            .flatten()
+            .collect();
+        present
+            .iter()
+            .filter(|path| {
+                self.implement_targets(path)
+                    .is_some_and(|targets| targets.iter().any(|t| needed_names.contains(t)))
+            })
+            .cloned()
+            .collect()
+    }
+
     /// realpath 済みパスが属する維持指定外ライブラリを特定し、そのファイルが `tags.json` で定義する
-    /// 識別子一覧を返す。linemarker の絶対パスを `files` の相対キーへ (`/` 区切り・`path` prefix 除去で)
-    /// 対応づける処理がここに集約される。定義を持たないファイルや対象外パスは `None`。
+    /// 識別子一覧を返す。定義を持たないファイルや対象外パスは `None`。
     fn defined_identifiers(&self, canonical: &Path) -> Option<&[String]> {
+        let (files, _, key) = self.tags_entry(canonical)?;
+        files.get(&key).map(Vec::as_slice)
+    }
+
+    /// realpath 済みパスが属する維持指定外ライブラリを特定し、そのファイルの実装先の型名一覧を返す。
+    fn implement_targets(&self, canonical: &Path) -> Option<&[String]> {
+        let (_, implements, key) = self.tags_entry(canonical)?;
+        implements.get(&key).map(Vec::as_slice)
+    }
+
+    /// realpath 済みパスが属する維持指定外ライブラリの `files`・`implements` と、そのライブラリ内での
+    /// 相対キーを返す。linemarker の絶対パスを相対キーへ (`/` 区切り・`path` prefix 除去で) 対応づける
+    /// 処理がここに集約される。
+    #[allow(clippy::type_complexity)]
+    fn tags_entry(
+        &self,
+        canonical: &Path,
+    ) -> Option<(
+        &BTreeMap<String, Vec<String>>,
+        &BTreeMap<String, Vec<String>>,
+        String,
+    )> {
         for lib in &self.libraries {
             if lib.keep {
                 continue;
             }
-            let TagsKind::Library { files, .. } = &lib.kind else {
+            let TagsKind::Library {
+                files, implements, ..
+            } = &lib.kind
+            else {
                 continue;
             };
             if let Ok(relative) = canonical.strip_prefix(&lib.path) {
                 let key = relpath::to_slash(relative).ok()?;
-                return files.get(&key).map(Vec::as_slice);
+                return Some((files, implements, key));
             }
         }
         None
@@ -293,6 +342,58 @@ mod tests {
         );
 
         assert_eq!(headers, BTreeSet::from([dsu]));
+    }
+
+    #[test]
+    fn implementation_files_are_found_via_needed_definitions() {
+        // fps.hpp が FPS を定義し、fps-impl.hpp が FPS を実装先に持つ (#21 の FPS パターン)。
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        let lib_path = register(
+            &store,
+            "mylib",
+            library_kind_with_implements(
+                &[("fps.hpp", &["FPS"]), ("other.hpp", &["other"])],
+                &[
+                    ("fps-impl.hpp", &["FPS"]),
+                    ("unrelated-impl.hpp", &["Tree"]),
+                ],
+            ),
+        );
+        let fps = lib_path.join("fps.hpp");
+        let implementation = lib_path.join("fps-impl.hpp");
+        let present = BTreeSet::from([
+            fps.clone(),
+            implementation.clone(),
+            lib_path.join("other.hpp"),
+            lib_path.join("unrelated-impl.hpp"),
+        ]);
+
+        let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
+        let files = inventory.implementation_files(&BTreeSet::from([fps]), &present);
+
+        // FPS の実装ファイルだけが選ばれる。Tree の実装や無関係な定義ファイルは巻き込まない。
+        assert_eq!(files, BTreeSet::from([implementation]));
+    }
+
+    #[test]
+    fn implementation_files_outside_present_are_not_pulled() {
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        let lib_path = register(
+            &store,
+            "mylib",
+            library_kind_with_implements(&[("fps.hpp", &["FPS"])], &[("fps-impl.hpp", &["FPS"])]),
+        );
+        let fps = lib_path.join("fps.hpp");
+
+        let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
+        // fps-impl.hpp はユーザーが include しておらず present に無いので、注入はしない (#10 の領分)。
+        assert!(
+            inventory
+                .implementation_files(&BTreeSet::from([fps.clone()]), &BTreeSet::from([fps]))
+                .is_empty()
+        );
     }
 
     #[test]
