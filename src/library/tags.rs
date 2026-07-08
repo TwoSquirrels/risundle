@@ -60,6 +60,34 @@ impl Tags {
     }
 }
 
+/// 旧スキーマの `tags.json` から、再登録に必要な情報だけを取り出したもの。
+///
+/// `library update` がスキーマ不一致から自己復旧するために使う。`path` と (std なら) `compilers` は
+/// 全スキーマバージョンに存在するため、それ以外のフィールドは検証せず読み飛ばす。
+pub struct MigrationSource {
+    pub path: PathBuf,
+    /// `std` の登録なら `Some` (認識コンパイラ集合)、通常ライブラリなら `None`。
+    pub compilers: Option<Vec<PathBuf>>,
+}
+
+impl MigrationSource {
+    pub fn load(path: &Path) -> Result<Self> {
+        #[derive(Deserialize)]
+        struct Probe {
+            path: PathBuf,
+            compilers: Option<Vec<PathBuf>>,
+        }
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let probe: Probe = serde_json::from_str(&json)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        Ok(Self {
+            path: probe.path,
+            compilers: probe.compilers,
+        })
+    }
+}
+
 /// `tags.json` の生のシリアライズ表現。`std` は `compiler` のみ、通常ライブラリは `hash`・`files` を
 /// 持つ。種別ごとに排他なので、どちらの組が揃っているかで [`TagsKind`] を復元する。
 #[derive(Debug, Serialize, Deserialize)]

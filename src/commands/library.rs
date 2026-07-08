@@ -7,7 +7,7 @@ use crate::cli::LibraryCommand;
 use crate::commands::compiler::resolve as resolve_compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
-use crate::library::tags::{Tags, TagsKind};
+use crate::library::tags::{MigrationSource, Tags, TagsKind};
 use crate::library::{dummy, hash, identifiers};
 
 /// `std` として扱うライブラリ ID。識別子情報を持たず、更新検知の対象外とする。
@@ -295,11 +295,14 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
 fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    let tags = Tags::load(&store.tags_json(id))?;
+    // update は登録内容を丸ごと作り直すため、tags.json からは登録パス (std ならコンパイラ集合) しか
+    // 使わない。旧スキーマでもそれらは読めるので、スキーマ検証をせずに読み出し、update 自身が
+    // 「スキーマ不一致は update で再生成」というエラー案内の受け皿になれるようにする。
+    let source = MigrationSource::load(&store.tags_json(id))?;
 
     eprintln!("updating library `{id}`...");
-    match tags.kind {
-        TagsKind::Std { compilers } => {
+    match source.compilers {
+        Some(compilers) => {
             if path.is_some() {
                 bail!(
                     "a path cannot be specified for the standard library (it is auto-detected from the compiler)"
@@ -308,10 +311,10 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
             let discovered = discover_all(&compilers)?;
             register_std(store, &discovered)?;
         }
-        TagsKind::Library { .. } => {
+        None => {
             let source_root = match path {
                 Some(path) => resolve_source_root(path)?,
-                None => tags.path,
+                None => source.path,
             };
             register_library(store, id, &source_root)?;
         }
@@ -576,6 +579,33 @@ mod tests {
             }
             TagsKind::Std { .. } => panic!("非 std ライブラリは Library を持つべき"),
         }
+    }
+
+    #[test]
+    fn update_migrates_tags_from_an_older_schema() {
+        // 「スキーマ不一致は update で再生成」というエラー案内の受け皿として、update 自身は
+        // 旧スキーマの tags.json からでも登録パスを読み出して再登録できなければならない。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+
+        let tags_path = store.tags_json("mylib");
+        let old_json = fs::read_to_string(&tags_path)
+            .unwrap()
+            .replace("\"schema_version\": 2", "\"schema_version\": 1");
+        fs::write(&tags_path, old_json).unwrap();
+        assert!(
+            Tags::load(&tags_path).is_err(),
+            "旧スキーマは通常読み込みでは弾かれる前提"
+        );
+
+        update(&store, Some("mylib"), None).unwrap();
+
+        assert!(
+            Tags::load(&tags_path).is_ok(),
+            "update 後は現行スキーマで読めるべき"
+        );
     }
 
     #[test]
