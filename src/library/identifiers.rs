@@ -396,8 +396,6 @@ mod tests {
 
     #[test]
     fn nested_qualifiers_record_each_scope() {
-        // `a::b::f` は各段の修飾側を拾う。namespace 名が混ざっても、namespace 名は定義識別子に
-        // 登録されないため逆引きで一致せず無害 (モジュールコメント参照)。
         let source = "void outer::Inner::f() { }";
         assert_eq!(
             implements_in(source),
@@ -407,7 +405,6 @@ mod tests {
 
     #[test]
     fn in_class_definitions_have_no_implement_target() {
-        // クラス内で完結する定義は実装先を持たない (自分自身の実装は逆引き不要)。
         let source = "struct V { V operator+(V o) { return o; } void f() { } };";
         assert_eq!(implements_in(source), Vec::<String>::new());
     }

@@ -378,7 +378,6 @@ mod tests {
 
         let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
         // present に無い (= include されていない) ファイルは、実装先が一致しても補わない。
-        // バンドル入力に現れないファイルの注入は本メソッドの責務外。
         assert!(
             inventory
                 .implementation_files(&BTreeSet::from([fps.clone()]), &BTreeSet::from([fps]))

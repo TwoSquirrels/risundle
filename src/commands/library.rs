@@ -709,7 +709,6 @@ mod tests {
         add_std(&store, Some(&g)).unwrap();
         downgrade_schema(&store, "std");
 
-        // スキーマの合わない登録があっても、add-std は集合を引き継いで作り直せる。
         add_std(&store, Some(&g)).unwrap();
         assert!(Tags::load(&store.tags_json("std")).is_ok());
     }
