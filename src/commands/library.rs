@@ -353,18 +353,21 @@ fn list(store: &LocalStore) -> Result<()> {
         println!("no libraries are registered");
         return Ok(());
     }
+    // ID・種別・パスしか出さず、いずれも全スキーマバージョンに共通のため、スキーマ検証をしない
+    // MigrationSource で読む。一覧はアップグレード直後でもエラーにせず動くべき (バンドル時に自動移行)。
     // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
-        let tags = Tags::load(&store.tags_json(&id))?;
-        println!("{id}\t{}\t{}", kind_label(&tags.kind), tags.path.display());
+        let source = MigrationSource::load(&store.tags_json(&id))?;
+        println!("{id}\t{}\t{}", kind_label(&source), source.path.display());
     }
     Ok(())
 }
 
-fn kind_label(kind: &TagsKind) -> &'static str {
-    match kind {
-        TagsKind::Std { .. } => "std",
-        TagsKind::Library { .. } => "library",
+fn kind_label(source: &MigrationSource) -> &'static str {
+    if source.compilers.is_some() {
+        "std"
+    } else {
+        "library"
     }
 }
 
@@ -376,7 +379,28 @@ fn show_field(label: &str, value: &str) {
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    let tags = Tags::load(&store.tags_json(id))?;
+    match Tags::load(&store.tags_json(id)) {
+        Ok(tags) => show_tags(id, &tags, verbose),
+        // 詳細 (定義識別子・ハッシュ) は現行スキーマでないと読めない。読み取りコマンドが状態を
+        // 書き換えるのは避けたいので、自動移行はせず、読める基本情報だけ出して update を案内する。
+        Err(err) => match err.downcast_ref::<SchemaMismatch>() {
+            Some(mismatch) => show_outdated(store, id, &mismatch.to_string()),
+            None => Err(err),
+        },
+    }
+}
+
+/// スキーマが古く詳細を読めない登録について、`MigrationSource` から読める基本情報だけ表示する。
+fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
+    let source = MigrationSource::load(&store.tags_json(id))?;
+    show_field("ID", id);
+    show_field("Path", &source.path.display().to_string());
+    show_field("Kind", kind_label(&source));
+    show_field("Details", &format!("unavailable ({reason})"));
+    Ok(())
+}
+
+fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
     show_field("ID", id);
     show_field("Path", &tags.path.display().to_string());
     match &tags.kind {
@@ -652,6 +676,23 @@ mod tests {
         // 既に現行スキーマなら再度呼んでも成功し、読める状態を保つ。
         auto_migrate(&store).unwrap();
         assert!(Tags::load(&store.tags_json("mylib")).is_ok());
+    }
+
+    #[test]
+    fn list_and_show_tolerate_outdated_schema() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        downgrade_schema(&store, "mylib");
+
+        // 読み取りコマンドはスキーマ不一致でもエラーにせず、移行もしない (状態は古いまま)。
+        list(&store).unwrap();
+        show(&store, "mylib", true).unwrap();
+        assert!(
+            Tags::load(&store.tags_json("mylib")).is_err(),
+            "読み取りコマンドは登録を書き換えない"
+        );
     }
 
     #[test]
