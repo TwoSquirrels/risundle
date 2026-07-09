@@ -31,12 +31,21 @@ src/
     rewrite.rs       不要行の削除とダミー pragma の #include 復元
 ```
 
-依存は内向き一方向で、循環しない。各モジュールが依存できるのは自分より内側だけ (外側ほど揮発的):
+依存は内向き一方向で、循環しない。矢印は「依存してよい相手」で、ここに無い依存は持たない (`fs` と `compiler` は何にも依存しない終端):
 
-- `main` → `commands`
-  - `commands` → `bundle`, `library`, `compiler`
-    - `bundle` → `library`
-      - `library` → `fs`, `compiler`
+```mermaid
+graph LR
+  main --> commands
+  commands --> bundle
+  commands --> library
+  commands --> compiler
+  bundle --> library
+  bundle --> fs
+  library --> fs
+  library --> compiler
+```
+
+各モジュールの役割と、そこに置く理由は次のとおり。
 
 - `fs` は何にも依存しない走査ユーティリティで、`library` と `bundle` が共有する。
 - `compiler` も同じ立ち位置の共有の道具。コンパイラへの問い合わせは登録 (システム include パスの検出) とバンドル (警告時の照合) のどちらにも属さないので、`library` に埋めず `fs` と並べる。
