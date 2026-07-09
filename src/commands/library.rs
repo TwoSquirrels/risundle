@@ -310,9 +310,9 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
 pub fn auto_migrate(store: &LocalStore) -> Result<()> {
     for id in store.library_ids()? {
         match Tags::load(&store.tags_json(&id)) {
-            Ok(_) => continue,
-            Err(err) if err.downcast_ref::<SchemaMismatch>().is_none() => return Err(err),
-            Err(_) => {}
+            Ok(_) => continue, // 現行スキーマ: 触らない
+            Err(err) if err.downcast_ref::<SchemaMismatch>().is_some() => {} // 旧スキーマ: 下で作り直す
+            Err(err) => return Err(err), // 破損など: 呼び出し側へ委ねる
         }
         eprintln!("migrating library `{id}` to the current tags format...");
         reregister(store, &id, None)?;
@@ -676,6 +676,18 @@ mod tests {
         // 既に現行スキーマなら再度呼んでも成功し、読める状態を保つ。
         auto_migrate(&store).unwrap();
         assert!(Tags::load(&store.tags_json("mylib")).is_ok());
+    }
+
+    #[test]
+    fn auto_migrate_propagates_non_schema_errors() {
+        // スキーマ不一致 (回復可) と、破損など回復不能なエラーは区別する。後者は握り潰さず伝播する。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        std::fs::write(store.tags_json("mylib"), "{ not valid json").unwrap();
+
+        assert!(auto_migrate(&store).is_err());
     }
 
     #[test]
