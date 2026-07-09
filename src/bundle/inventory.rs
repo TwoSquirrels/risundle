@@ -5,7 +5,7 @@
 //! 「維持指定された (tree-shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
 //! 区別を、各メソッドで一貫して適用する。
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -26,6 +26,12 @@ struct Library {
     dummy_dir: PathBuf,
     keep: bool,
     kind: TagsKind,
+}
+
+/// 1 ファイルの `tags.json` レコード。定義識別子と実装先の型名を対で保持する。
+struct FileTags<'a> {
+    defines: &'a [String],
+    implements: &'a [String],
 }
 
 pub struct Inventory {
@@ -117,8 +123,8 @@ impl Inventory {
         present
             .iter()
             .filter(|path| {
-                self.defined_identifiers(path)
-                    .is_some_and(|names| names.iter().any(|name| used.contains(name)))
+                self.file_tags(path)
+                    .is_some_and(|tags| tags.defines.iter().any(|name| used.contains(name)))
             })
             .cloned()
             .collect()
@@ -136,44 +142,24 @@ impl Inventory {
     ) -> BTreeSet<PathBuf> {
         let needed_names: BTreeSet<&String> = needed
             .iter()
-            .filter_map(|path| self.defined_identifiers(path))
-            .flatten()
+            .filter_map(|path| self.file_tags(path))
+            .flat_map(|tags| tags.defines)
             .collect();
         present
             .iter()
             .filter(|path| {
-                self.implement_targets(path)
-                    .is_some_and(|targets| targets.iter().any(|t| needed_names.contains(t)))
+                self.file_tags(path)
+                    .is_some_and(|tags| tags.implements.iter().any(|t| needed_names.contains(t)))
             })
             .cloned()
             .collect()
     }
 
-    /// realpath 済みパスが属する維持指定外ライブラリを特定し、そのファイルが `tags.json` で定義する
-    /// 識別子一覧を返す。定義を持たないファイルや対象外パスは `None`。
-    fn defined_identifiers(&self, canonical: &Path) -> Option<&[String]> {
-        let (files, _, key) = self.tags_entry(canonical)?;
-        files.get(&key).map(Vec::as_slice)
-    }
-
-    /// realpath 済みパスが属する維持指定外ライブラリを特定し、そのファイルの実装先の型名一覧を返す。
-    fn implement_targets(&self, canonical: &Path) -> Option<&[String]> {
-        let (_, implements, key) = self.tags_entry(canonical)?;
-        implements.get(&key).map(Vec::as_slice)
-    }
-
-    /// realpath 済みパスが属する維持指定外ライブラリの `files`・`implements` と、そのライブラリ内での
-    /// 相対キーを返す。linemarker の絶対パスを相対キーへ (`/` 区切り・`path` prefix 除去で) 対応づける
-    /// 処理がここに集約される。
-    #[allow(clippy::type_complexity)]
-    fn tags_entry(
-        &self,
-        canonical: &Path,
-    ) -> Option<(
-        &BTreeMap<String, Vec<String>>,
-        &BTreeMap<String, Vec<String>>,
-        String,
-    )> {
+    /// realpath 済みパスが維持指定外ライブラリ配下なら、そのファイルの `tags.json` レコードを返す。
+    /// 対象外パスは `None`。ライブラリ配下だが定義や実装先を持たないファイルは、対応するスライスが
+    /// 空になる。linemarker の絶対パスを相対キーへ (`/` 区切り・`path` prefix 除去で) 対応づける処理が
+    /// ここに集約される。
+    fn file_tags(&self, canonical: &Path) -> Option<FileTags<'_>> {
         for lib in &self.libraries {
             if lib.keep {
                 continue;
@@ -186,7 +172,10 @@ impl Inventory {
             };
             if let Ok(relative) = canonical.strip_prefix(&lib.path) {
                 let key = relpath::to_slash(relative).ok()?;
-                return Some((files, implements, key));
+                return Some(FileTags {
+                    defines: files.get(&key).map(Vec::as_slice).unwrap_or_default(),
+                    implements: implements.get(&key).map(Vec::as_slice).unwrap_or_default(),
+                });
             }
         }
         None
