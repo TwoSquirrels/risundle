@@ -264,6 +264,54 @@ fn bundle_no_tree_shaking_keeps_unused_headers() {
 }
 
 #[test]
+fn bundle_keeps_operator_implementation_files() {
+    // 宣言 (vec2.hpp) と演算子の実装 (vec2-ops.hpp) が分かれたライブラリ。実装側は定義識別子を
+    // 持たないため、実装先の型名 (implements) の逆引きだけが依存の手がかりになる。
+    let sandbox = Sandbox::new();
+    sandbox.write(
+        "mylib/vec2.hpp",
+        "#pragma once\nstruct Vec2 { int x, y; Vec2 operator+(const Vec2& r) const; };\n",
+    );
+    sandbox.write(
+        "mylib/vec2-ops.hpp",
+        "#pragma once\n#include <vec2.hpp>\n\
+        Vec2 Vec2::operator+(const Vec2& r) const { return {x + r.x, y + r.y}; }\n",
+    );
+    let unused = sandbox.write(
+        "mylib/unused.hpp",
+        "#pragma once\nstruct Unused { int unused_value() const { return 1; } };\n",
+    );
+    let lib_root = unused.parent().unwrap().to_path_buf();
+    sandbox
+        .risundle()
+        .args(["library", "add", "mylib"])
+        .arg(&lib_root)
+        .assert()
+        .success();
+
+    sandbox.write(
+        "main.cpp",
+        "#include <cstdio>\n#include <vec2.hpp>\n#include <vec2-ops.hpp>\n#include <unused.hpp>\n\
+        int main() { Vec2 a{1, 2}, b{3, 4}; Vec2 c = a + b; std::printf(\"%d\\n\", c.x + c.y); return 0; }\n",
+    );
+
+    let bundled = run_bundle(&sandbox, &["-k", STD]);
+
+    // 演算子の使用 (a + b) は識別子として検出できないが、実装ファイルは残るべき。実装が消えた
+    // 場合は宣言だけでコンパイルは通り、undefined reference としてリンクで初めて顕在化するため、
+    // リンクまで行う compile_and_run で検証する。
+    assert!(
+        bundled.contains("Vec2 Vec2::operator+"),
+        "実装ファイルが tree-shaking で消えてはいけない"
+    );
+    assert!(
+        !bundled.contains("struct Unused"),
+        "実装ファイルの救済で無関係な未使用ヘッダーまで残してはいけない"
+    );
+    assert_eq!(compile_and_run(&sandbox, &bundled).trim(), "10");
+}
+
+#[test]
 fn bundle_keeps_transitively_required_headers() {
     let sandbox = Sandbox::new();
     // mid.hpp は base.hpp を必要とする。main は Mid だけ使うが、Base も残らねばならない。

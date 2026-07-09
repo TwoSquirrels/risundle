@@ -1,6 +1,7 @@
 //! 登録済みライブラリの突き合わせ用インベントリ。`tags.json` を読み込み、バンドルの各工程が必要と
-//! する 4 つの問い合わせに答える: インクルードパスの組み立て (`-I`)、`-nostdinc` の要否、ハッシュ
-//! 検証、そして `識別子 → 依存ヘッダー` の逆引き。維持指定 (keep) と種別 (`std` / 通常) を保持し、
+//! する問い合わせに答える: インクルードパスの組み立て (`-I`)、`-nostdinc` の要否、ハッシュ検証、
+//! `識別子 → 依存ヘッダー` の逆引き、そして `定義した型 → その実装ファイル` の逆引き。維持指定
+//! (keep) と種別 (`std` / 通常) を保持し、
 //! 「維持指定された (tree-shaking 対象外の) ライブラリと `std` は識別子情報を使わない」という仕様の
 //! 区別を、各メソッドで一貫して適用する。
 
@@ -25,6 +26,12 @@ struct Library {
     dummy_dir: PathBuf,
     keep: bool,
     kind: TagsKind,
+}
+
+/// 1 ファイルの `tags.json` レコード。定義識別子と実装先の型名を対で保持する。
+struct FileTags<'a> {
+    defines: &'a [String],
+    implements: &'a [String],
 }
 
 pub struct Inventory {
@@ -116,27 +123,59 @@ impl Inventory {
         present
             .iter()
             .filter(|path| {
-                self.defined_identifiers(path)
-                    .is_some_and(|names| names.iter().any(|name| used.contains(name)))
+                self.file_tags(path)
+                    .is_some_and(|tags| tags.defines.iter().any(|name| used.contains(name)))
             })
             .cloned()
             .collect()
     }
 
-    /// realpath 済みパスが属する維持指定外ライブラリを特定し、そのファイルが `tags.json` で定義する
-    /// 識別子一覧を返す。linemarker の絶対パスを `files` の相対キーへ (`/` 区切り・`path` prefix 除去で)
-    /// 対応づける処理がここに集約される。定義を持たないファイルや対象外パスは `None`。
-    fn defined_identifiers(&self, canonical: &Path) -> Option<&[String]> {
+    /// `present` のうち、`needed` 内のいずれかのファイルが定義する型を実装しているファイルを返す。
+    ///
+    /// 「実装している」は登録時に記録した実装先の型名 (`tags.json` の `implements`) と、`needed` 側の
+    /// 定義識別子との照合で判定する。演算子オーバーロードのような、定義識別子として現れない依存を
+    /// 拾うための逆引き。
+    pub fn implementation_files(
+        &self,
+        needed: &BTreeSet<PathBuf>,
+        present: &BTreeSet<PathBuf>,
+    ) -> BTreeSet<PathBuf> {
+        let needed_names: BTreeSet<&String> = needed
+            .iter()
+            .filter_map(|path| self.file_tags(path))
+            .flat_map(|tags| tags.defines)
+            .collect();
+        present
+            .iter()
+            .filter(|path| {
+                self.file_tags(path)
+                    .is_some_and(|tags| tags.implements.iter().any(|t| needed_names.contains(t)))
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// realpath 済みパスが維持指定外ライブラリ配下なら、そのファイルの `tags.json` レコードを返す。
+    /// 対象外パスは `None`。ライブラリ配下だが定義や実装先を持たないファイルは、対応するスライスが
+    /// 空になる。linemarker の絶対パスを相対キーへ (`/` 区切り・`path` prefix 除去で) 対応づける処理が
+    /// ここに集約される。
+    fn file_tags(&self, canonical: &Path) -> Option<FileTags<'_>> {
         for lib in &self.libraries {
             if lib.keep {
                 continue;
             }
-            let TagsKind::Library { files, .. } = &lib.kind else {
+            let TagsKind::Library {
+                files, implements, ..
+            } = &lib.kind
+            else {
                 continue;
             };
             if let Ok(relative) = canonical.strip_prefix(&lib.path) {
                 let key = relpath::to_slash(relative).ok()?;
-                return files.get(&key).map(Vec::as_slice);
+                return Some(FileTags {
+                    defines: files.get(&key).map(Vec::as_slice).unwrap_or_default(),
+                    implements: implements.get(&key).map(Vec::as_slice).unwrap_or_default(),
+                });
             }
         }
         None
@@ -192,9 +231,15 @@ mod tests {
     }
 
     fn library_kind(files: &[(&str, &[&str])]) -> TagsKind {
-        TagsKind::Library {
-            hash: "sha256:placeholder".to_owned(),
-            files: files
+        library_kind_with_implements(files, &[])
+    }
+
+    fn library_kind_with_implements(
+        files: &[(&str, &[&str])],
+        implements: &[(&str, &[&str])],
+    ) -> TagsKind {
+        let to_map = |entries: &[(&str, &[&str])]| {
+            entries
                 .iter()
                 .map(|(key, names)| {
                     (
@@ -202,7 +247,12 @@ mod tests {
                         names.iter().map(|n| (*n).to_owned()).collect(),
                     )
                 })
-                .collect(),
+                .collect()
+        };
+        TagsKind::Library {
+            hash: "sha256:placeholder".to_owned(),
+            files: to_map(files),
+            implements: to_map(implements),
         }
     }
 
@@ -282,6 +332,57 @@ mod tests {
         );
 
         assert_eq!(headers, BTreeSet::from([dsu]));
+    }
+
+    #[test]
+    fn implementation_files_are_found_via_needed_definitions() {
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        let lib_path = register(
+            &store,
+            "mylib",
+            library_kind_with_implements(
+                &[("fps.hpp", &["FPS"]), ("other.hpp", &["other"])],
+                &[
+                    ("fps-impl.hpp", &["FPS"]),
+                    ("unrelated-impl.hpp", &["Tree"]),
+                ],
+            ),
+        );
+        let fps = lib_path.join("fps.hpp");
+        let implementation = lib_path.join("fps-impl.hpp");
+        let present = BTreeSet::from([
+            fps.clone(),
+            implementation.clone(),
+            lib_path.join("other.hpp"),
+            lib_path.join("unrelated-impl.hpp"),
+        ]);
+
+        let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
+        let files = inventory.implementation_files(&BTreeSet::from([fps]), &present);
+
+        // needed が定義する FPS の実装ファイルだけが選ばれ、別の型 (Tree) の実装は巻き込まない。
+        assert_eq!(files, BTreeSet::from([implementation]));
+    }
+
+    #[test]
+    fn implementation_files_outside_present_are_not_pulled() {
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        let lib_path = register(
+            &store,
+            "mylib",
+            library_kind_with_implements(&[("fps.hpp", &["FPS"])], &[("fps-impl.hpp", &["FPS"])]),
+        );
+        let fps = lib_path.join("fps.hpp");
+
+        let inventory = Inventory::load(&store, &keep_set(&["std"])).unwrap();
+        // present に無い (= include されていない) ファイルは、実装先が一致しても補わない。
+        assert!(
+            inventory
+                .implementation_files(&BTreeSet::from([fps.clone()]), &BTreeSet::from([fps]))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -382,6 +483,7 @@ mod tests {
             kind: TagsKind::Library {
                 hash: real_hash,
                 files,
+                implements: BTreeMap::new(),
             },
         }
         .save(&store.tags_json("lib"))

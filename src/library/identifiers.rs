@@ -44,44 +44,61 @@ const SKIP_DESCENT: &[&str] = &[
 /// tree-shaking が無効化される。namespace 内のメンバは子の再帰で個別に拾うため取りこぼさない。
 const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier"];
 
-/// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名を集約する。
-///
-/// キーは `source_root` からの相対パス (`/` 区切り)、値は重複排除・昇順の識別子名一覧。
-/// 定義を一つも持たないファイル (インクルードのみの拡張子なしファイル等) は結果に含めない。
-/// 対象ファイルの選別は [`source::walk_sources`] が担う。
+/// [`enumerate`] の結果。どちらもキーは `source_root` からの相対パス (`/` 区切り)、値は重複排除・
+/// 昇順の名前一覧で、該当する名前を持たないファイルはキー自体を含めない。
+pub struct Enumeration {
+    /// 各ファイルが定義する識別子名 (tags.json の `files`)。
+    pub definitions: BTreeMap<String, Vec<String>>,
+    /// 各ファイルの「実装先の型名」(tags.json の `implements`)。クラス外の修飾付き定義
+    /// (`X<...>::method`) の修飾側や、明示的特殊化 (`template <> struct T<...>`) の主テンプレート名。
+    /// 演算子オーバーロードのように定義識別子が残らない実装ファイルでも、依存を逆引きできるように
+    /// する。namespace 修飾 (`void ns::f()`) の namespace 名も混ざるが、namespace 名は定義
+    /// 識別子として登録されない ([`NAME_NODES`] 参照) ため逆引きで一致することがなく、無害である。
+    pub implements: BTreeMap<String, Vec<String>>,
+}
+
+/// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名と実装先の型名を
+/// 集約する。対象ファイルの選別は [`source::walk_sources`] が担う。
 ///
 /// ファイルを処理する直前に `on_progress(相対パス)` を呼ぶ。登録に時間がかかるため、呼び出し側が
 /// 進捗を表示できるようにする。
-pub fn enumerate(
-    source_root: &Path,
-    mut on_progress: impl FnMut(&str),
-) -> Result<BTreeMap<String, Vec<String>>> {
+pub fn enumerate(source_root: &Path, mut on_progress: impl FnMut(&str)) -> Result<Enumeration> {
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_cpp::LANGUAGE.into())
         .context("failed to initialize the C++ parser")?;
-    let mut files = BTreeMap::new();
+    let mut result = Enumeration {
+        definitions: BTreeMap::new(),
+        implements: BTreeMap::new(),
+    };
     source::walk_sources(source_root, |relative, content| {
         let slug = relpath::to_slash(relative)?;
         on_progress(&slug);
-        let names = definitions_in(&mut parser, content)
+        let (definitions, implements) = names_in_file(&mut parser, content)
             .with_context(|| format!("failed to extract identifiers from {slug}"))?;
-        if !names.is_empty() {
-            files.insert(slug, names);
+        if !definitions.is_empty() {
+            result.definitions.insert(slug.clone(), definitions);
+        }
+        if !implements.is_empty() {
+            result.implements.insert(slug, implements);
         }
         Ok(())
     })?;
-    Ok(files)
+    Ok(result)
 }
 
-/// 1 ファイルのソースから、定義された識別子名を重複排除・昇順で返す。
-fn definitions_in(parser: &mut Parser, source: &[u8]) -> Result<Vec<String>> {
+/// 1 ファイルのソースから、(定義された識別子名, 実装先の型名) をそれぞれ重複排除・昇順で返す。
+fn names_in_file(parser: &mut Parser, source: &[u8]) -> Result<(Vec<String>, Vec<String>)> {
     let tree = parser
         .parse(source, None)
         .ok_or_else(|| anyhow!("failed to parse the source"))?;
     let mut names = BTreeSet::new();
-    collect_definitions(tree.root_node(), source, &mut names);
-    Ok(names.into_iter().collect())
+    let mut implements = BTreeSet::new();
+    collect_definitions(tree.root_node(), source, &mut names, &mut implements);
+    Ok((
+        names.into_iter().collect(),
+        implements.into_iter().collect(),
+    ))
 }
 
 /// 構文木を辿り、各宣言ノードが導入する名前を `names` に集める。`SKIP_DESCENT` のノードには降りない。
@@ -90,18 +107,23 @@ fn definitions_in(parser: &mut Parser, source: &[u8]) -> Result<Vec<String>> {
 /// (継承元)、`scope` (修飾子) などは既存の名前への参照であり、辿ると使用箇所まで識別子化して
 /// 逆引きを汚すため辿らない。`type` フィールド内に書かれた埋め込み型定義 (`struct X {} v;`) は、
 /// 全子ノードの再帰訪問で当該 `struct` ノードに到達し、その `name` から拾える。
-fn collect_definitions(node: Node, source: &[u8], names: &mut BTreeSet<String>) {
+fn collect_definitions(
+    node: Node,
+    source: &[u8],
+    names: &mut BTreeSet<String>,
+    implements: &mut BTreeSet<String>,
+) {
     if SKIP_DESCENT.contains(&node.kind()) {
         return;
     }
     for field in ["name", "declarator"] {
         if let Some(child) = node.child_by_field_name(field) {
-            collect_leaf(child, source, names);
+            collect_leaf(child, source, names, implements);
         }
     }
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_definitions(child, source, names);
+        collect_definitions(child, source, names, implements);
     }
 }
 
@@ -110,11 +132,33 @@ fn collect_definitions(node: Node, source: &[u8], names: &mut BTreeSet<String>) 
 /// 宣言子は `pointer_declarator` → `function_declarator` → `identifier` のように入れ子になるため、
 /// 同名フィールドを辿り続けて末端へ到達する。`qualified_identifier` は `name` 側のみ辿るため、
 /// `Foo::bar` からは `bar` を得る (逆引きはトークン単位で行うため修飾子は不要)。
-fn collect_leaf(node: Node, source: &[u8], names: &mut BTreeSet<String>) {
+fn collect_leaf(
+    node: Node,
+    source: &[u8],
+    names: &mut BTreeSet<String>,
+    implements: &mut BTreeSet<String>,
+) {
+    // クラス外の修飾付き定義 (`X<...>::method`) は、修飾側 (`X`) が実装先の型名。定義名の探索とは
+    // 独立に記録する。name 側の探索は下のフィールド辿りが担う (入れ子の `a::b::f` も再帰で各段の
+    // 修飾側を拾う)。
+    if node.kind() == "qualified_identifier"
+        && let Some(scope) = node.child_by_field_name("scope")
+    {
+        collect_implement_target(scope, source, implements);
+    }
+    // 明示的特殊化 (`template <> struct T<X>` / `template <> void f<X>()`) では定義名の位置に
+    // テンプレート名 + 実引数のノードが来る。主テンプレート `T` / `f` は他ファイルで定義されている
+    // 見込みが高いので、実装先としても記録する。
+    if matches!(
+        node.kind(),
+        "template_type" | "template_function" | "template_method"
+    ) {
+        collect_implement_target(node, source, implements);
+    }
     let mut descended = false;
     for field in ["name", "declarator"] {
         if let Some(child) = node.child_by_field_name(field) {
-            collect_leaf(child, source, names);
+            collect_leaf(child, source, names, implements);
             descended = true;
         }
     }
@@ -124,7 +168,7 @@ fn collect_leaf(node: Node, source: &[u8], names: &mut BTreeSet<String>) {
     if node.kind() == "operator_name" {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
-            collect_leaf(child, source, names);
+            collect_leaf(child, source, names, implements);
             descended = true;
         }
     }
@@ -133,6 +177,27 @@ fn collect_leaf(node: Node, source: &[u8], names: &mut BTreeSet<String>) {
         && let Ok(text) = node.utf8_text(source)
     {
         names.insert(text.to_owned());
+    }
+}
+
+/// 実装先の型名ノードから、その基底の名前を採用する。`FormalPowerSeries<mint>` のような
+/// テンプレート実引数付きはテンプレート名だけを取り、実引数には降りない (実引数は参照であって
+/// 実装先ではない)。
+fn collect_implement_target(node: Node, source: &[u8], implements: &mut BTreeSet<String>) {
+    match node.kind() {
+        "namespace_identifier" | "identifier" | "type_identifier" => {
+            if let Ok(text) = node.utf8_text(source) {
+                implements.insert(text.to_owned());
+            }
+        }
+        "template_type" | "template_function" | "template_method" => {
+            if let Some(name) = node.child_by_field_name("name") {
+                collect_implement_target(name, source, implements);
+            }
+        }
+        // decltype や依存名などの複雑な修飾は、実装先を静的に特定できないため拾わない。
+        // 拾い漏れてもこの逆引きが効かないだけで、定義識別子による依存検出には影響しない。
+        _ => {}
     }
 }
 
@@ -156,6 +221,18 @@ mod tests {
         write_file(&root, "lib.hpp", source);
         enumerate(&root, |_| {})
             .unwrap()
+            .definitions
+            .remove("lib.hpp")
+            .unwrap_or_default()
+    }
+
+    fn implements_in(source: &str) -> Vec<String> {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().join("source");
+        write_file(&root, "lib.hpp", source);
+        enumerate(&root, |_| {})
+            .unwrap()
+            .implements
             .remove("lib.hpp")
             .unwrap_or_default()
     }
@@ -170,7 +247,7 @@ mod tests {
             "namespace atcoder { struct segtree {}; }",
         );
 
-        let files = enumerate(&source, |_| {}).unwrap();
+        let files = enumerate(&source, |_| {}).unwrap().definitions;
         assert!(files["atcoder/segtree.hpp"].contains(&"segtree".to_owned()));
     }
 
@@ -288,6 +365,58 @@ mod tests {
     }
 
     #[test]
+    fn out_of_class_definition_records_the_implement_target() {
+        let source = "void Foo::bar() { }";
+        assert_eq!(names_in(source), vec!["bar".to_owned()]);
+        assert_eq!(implements_in(source), vec!["Foo".to_owned()]);
+    }
+
+    #[test]
+    fn templated_out_of_class_definition_records_the_primary_name() {
+        // テンプレート実引数 (mint) は参照であって実装先ではないので拾わない。
+        let source = "template <typename mint>\n\
+             void FormalPowerSeries<mint>::set_fft() { }";
+        assert_eq!(implements_in(source), vec!["FormalPowerSeries".to_owned()]);
+    }
+
+    #[test]
+    fn operator_only_file_still_gets_an_implement_target() {
+        // 演算子だけの実装ファイルは定義識別子が空になるため、実装先の記録だけが依存の手がかりになる。
+        let source = "template <typename T>\n\
+             FormalPowerSeries<T>& FormalPowerSeries<T>::operator*=(const FormalPowerSeries<T>& r) { return *this; }";
+        assert_eq!(names_in(source), Vec::<String>::new());
+        assert_eq!(implements_in(source), vec!["FormalPowerSeries".to_owned()]);
+    }
+
+    #[test]
+    fn explicit_specialization_records_the_primary_template() {
+        let source = "template <> struct Trait<int> { static const bool value = true; };";
+        assert!(implements_in(source).contains(&"Trait".to_owned()));
+    }
+
+    #[test]
+    fn nested_qualifiers_record_each_scope() {
+        let source = "void outer::Inner::f() { }";
+        assert_eq!(
+            implements_in(source),
+            vec!["Inner".to_owned(), "outer".to_owned()]
+        );
+    }
+
+    #[test]
+    fn in_class_definitions_have_no_implement_target() {
+        let source = "struct V { V operator+(V o) { return o; } void f() { } };";
+        assert_eq!(implements_in(source), Vec::<String>::new());
+    }
+
+    #[test]
+    fn type_references_do_not_become_implement_targets() {
+        // 使用側の修飾 (`internal::barrett bt;` や `Trait<T>::value` の参照) は実装先ではない。
+        let source = "struct modint { static internal::barrett bt; };\nint x = Trait<int>::value;";
+        assert_eq!(implements_in(source), Vec::<String>::new());
+    }
+
+    #[test]
     fn names_are_deduplicated_and_sorted() {
         // 前方宣言と定義で同名が複数回現れても 1 つにまとまり、昇順で返る。
         let names = names_in("void zeta(); void alpha(); void zeta() {}");
@@ -301,7 +430,9 @@ mod tests {
         // AC Library の拡張子なしファイルのように、インクルードのみで定義を持たない。
         write_file(&source, "atcoder/modint", "#include <atcoder/modint.hpp>");
 
-        assert!(enumerate(&source, |_| {}).unwrap().is_empty());
+        let result = enumerate(&source, |_| {}).unwrap();
+        assert!(result.definitions.is_empty());
+        assert!(result.implements.is_empty());
     }
 
     #[test]

@@ -33,6 +33,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     if let Err(err) = cmd_library::auto_setup_std(&store) {
         eprintln!("warning: failed to auto-register the standard library: {err:#}");
     }
+    cmd_library::auto_migrate(&store)?;
 
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;
@@ -170,8 +171,19 @@ fn unused_origins(
     // 出力に現れた維持指定外ライブラリのファイル群。これが逆引きの母集合かつ不要判定の候補になる。
     let present: BTreeSet<PathBuf> = pruneable.values().cloned().collect();
     let used = detect::identifiers(&target_code);
-    let dependency_headers = inventory.dependency_headers(&used, &present);
-    let needed = needed_headers(&settings.compiler, compiler_args, &dependency_headers)?;
+    let mut dependency_headers = inventory.dependency_headers(&used, &present);
+
+    // 必要ファイルが定義する型の実装ファイル (演算子オーバーロード等、識別子に現れない依存) を
+    // 逆引きで加え、増えなくなるまで `-M` の必要集合と交互に更新する。dependency_headers は単調
+    // 増加で present に有界なので必ず停止する。
+    let needed = loop {
+        let needed = needed_headers(&settings.compiler, compiler_args, &dependency_headers)?;
+        let implementations = inventory.implementation_files(&needed, &present);
+        if implementations.is_subset(&dependency_headers) {
+            break needed;
+        }
+        dependency_headers.extend(implementations);
+    };
 
     let unused = prune::unused_headers(&present, &needed);
 

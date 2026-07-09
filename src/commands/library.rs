@@ -7,7 +7,7 @@ use crate::cli::LibraryCommand;
 use crate::commands::compiler::resolve as resolve_compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
-use crate::library::tags::{Tags, TagsKind};
+use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
 use crate::library::{dummy, hash, identifiers};
 
 /// `std` として扱うライブラリ ID。識別子情報を持たず、更新検知の対象外とする。
@@ -109,10 +109,11 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     if !store.is_registered(STD_ID) {
         return Ok(Vec::new());
     }
-    match Tags::load(&store.tags_json(STD_ID))?.kind {
-        TagsKind::Std { compilers } => Ok(compilers),
-        TagsKind::Library { .. } => Ok(Vec::new()),
-    }
+    // add-std は登録を作り直すため、既存の tags.json からは認識コンパイラ集合しか使わない。
+    // update と同じく、スキーマの合わない登録からでも集合を引き継げるよう検証せずに読む。
+    Ok(Registration::load(&store.tags_json(STD_ID))?
+        .compilers
+        .unwrap_or_default())
 }
 
 fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
@@ -131,11 +132,15 @@ fn register_library(store: &LocalStore, id: &str, source_root: &Path) -> Result<
     dummy::generate(source_root, &store.dummy_dir(id))?;
 
     // 識別子抽出はファイル数に比例して時間がかかるため、処理中のファイル名を逐次表示する。
-    let files = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
+    let names = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
     let hash = hash::aggregate(source_root)?;
     Tags {
         path: source_root.to_path_buf(),
-        kind: TagsKind::Library { hash, files },
+        kind: TagsKind::Library {
+            hash,
+            files: names.definitions,
+            implements: names.implements,
+        },
     }
     .save(&store.tags_json(id))
 }
@@ -291,11 +296,38 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
 fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    let tags = Tags::load(&store.tags_json(id))?;
-
     eprintln!("updating library `{id}`...");
-    match tags.kind {
-        TagsKind::Std { compilers } => {
+    reregister(store, id, path)?;
+    println!("updated library `{id}`");
+    Ok(())
+}
+
+/// バンドル前に呼ぶ。schema_version が現行と合わない登録を、ライブラリ実体から黙って作り直す。
+///
+/// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
+/// なので、ユーザーに `update` を要求せず自動で回復する (`std` の初回自動登録と同じ発想)。
+/// 現行スキーマで読めるものは触らない。再生成に失敗した場合はエラーを返し、呼び出し側が案内する。
+pub fn auto_migrate(store: &LocalStore) -> Result<()> {
+    for id in store.library_ids()? {
+        match Tags::load(&store.tags_json(&id)) {
+            Ok(_) => continue, // 現行スキーマ: 触らない
+            Err(err) if err.downcast_ref::<SchemaMismatch>().is_some() => {} // 旧スキーマ: 下で作り直す
+            Err(err) => return Err(err), // 破損など: 呼び出し側へ委ねる
+        }
+        eprintln!("migrating library `{id}` to the current tags format...");
+        reregister(store, &id, None)?;
+    }
+    Ok(())
+}
+
+/// 既存の登録の中核 (`Registration`) からライブラリ実体を再走査し、登録を作り直す。
+///
+/// [`Registration`] はスキーマ検証をせず読むため、旧スキーマの登録からでも回復できる。std は
+/// コンパイラ集合を、通常ライブラリは登録パス (または明示された `path`) を種にして作り直す。
+fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
+    let reg = Registration::load(&store.tags_json(id))?;
+    match reg.compilers {
+        Some(compilers) => {
             if path.is_some() {
                 bail!(
                     "a path cannot be specified for the standard library (it is auto-detected from the compiler)"
@@ -304,16 +336,14 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
             let discovered = discover_all(&compilers)?;
             register_std(store, &discovered)?;
         }
-        TagsKind::Library { .. } => {
+        None => {
             let source_root = match path {
                 Some(path) => resolve_source_root(path)?,
-                None => tags.path,
+                None => reg.path,
             };
             register_library(store, id, &source_root)?;
         }
     }
-
-    println!("updated library `{id}`");
     Ok(())
 }
 
@@ -323,19 +353,14 @@ fn list(store: &LocalStore) -> Result<()> {
         println!("no libraries are registered");
         return Ok(());
     }
+    // ID・種別・パスしか出さず、いずれも全スキーマバージョンに共通のため、スキーマ検証をしない
+    // Registration で読む。一覧はアップグレード直後でもエラーにせず動くべき (バンドル時に自動移行)。
     // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
-        let tags = Tags::load(&store.tags_json(&id))?;
-        println!("{id}\t{}\t{}", kind_label(&tags.kind), tags.path.display());
+        let reg = Registration::load(&store.tags_json(&id))?;
+        println!("{id}\t{}\t{}", reg.kind_label(), reg.path.display());
     }
     Ok(())
-}
-
-fn kind_label(kind: &TagsKind) -> &'static str {
-    match kind {
-        TagsKind::Std { .. } => "std",
-        TagsKind::Library { .. } => "library",
-    }
 }
 
 /// `show` の 1 項目を、ラベル幅を揃えて出力する。最長ラベル `Compilers` に合わせる。
@@ -346,7 +371,28 @@ fn show_field(label: &str, value: &str) {
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    let tags = Tags::load(&store.tags_json(id))?;
+    match Tags::load(&store.tags_json(id)) {
+        Ok(tags) => show_tags(id, &tags, verbose),
+        // 詳細 (定義識別子・ハッシュ) は現行スキーマでないと読めない。読み取りコマンドが状態を
+        // 書き換えるのは避けたいので、自動移行はせず、読める基本情報だけ出して update を案内する。
+        Err(err) => match err.downcast_ref::<SchemaMismatch>() {
+            Some(mismatch) => show_outdated(store, id, &mismatch.to_string()),
+            None => Err(err),
+        },
+    }
+}
+
+/// スキーマが古く詳細を読めない登録について、`Registration` から読める基本情報だけ表示する。
+fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
+    let reg = Registration::load(&store.tags_json(id))?;
+    show_field("ID", id);
+    show_field("Path", &reg.path.display().to_string());
+    show_field("Kind", reg.kind_label());
+    show_field("Details", &format!("unavailable ({reason})"));
+    Ok(())
+}
+
+fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
     show_field("ID", id);
     show_field("Path", &tags.path.display().to_string());
     match &tags.kind {
@@ -357,7 +403,11 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
                 println!("  {}", compiler.display());
             }
         }
-        TagsKind::Library { hash, files } => {
+        TagsKind::Library {
+            hash,
+            files,
+            implements,
+        } => {
             show_field("Kind", "library");
             show_field(
                 "Files",
@@ -368,6 +418,12 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
                 println!("Definitions:");
                 for (file, names) in files {
                     println!("  {file}: {}", names.join(", "));
+                }
+                if !implements.is_empty() {
+                    println!("Implements:");
+                    for (file, names) in implements {
+                        println!("  {file}: {}", names.join(", "));
+                    }
                 }
             }
         }
@@ -397,6 +453,19 @@ mod tests {
         LocalStore::with_root(local.path())
     }
 
+    /// 登録済みライブラリの tags.json を、現行と異なる schema_version に書き換える (移行の検証用)。
+    fn downgrade_schema(store: &LocalStore, id: &str) {
+        let tags_path = store.tags_json(id);
+        let old = fs::read_to_string(&tags_path)
+            .unwrap()
+            .replace("\"schema_version\": 2", "\"schema_version\": 1");
+        fs::write(&tags_path, old).unwrap();
+        assert!(
+            Tags::load(&tags_path).is_err(),
+            "旧スキーマは通常読み込みでは弾かれる前提"
+        );
+    }
+
     #[test]
     fn registers_non_std_library_with_files_dummy_and_hash() {
         let local = TempDir::new().unwrap();
@@ -408,7 +477,7 @@ mod tests {
         assert!(store.is_registered("ac-library"));
         let tags = Tags::load(&store.tags_json("ac-library")).unwrap();
         match tags.kind {
-            TagsKind::Library { hash, files } => {
+            TagsKind::Library { hash, files, .. } => {
                 assert!(hash.starts_with("sha256:"));
                 assert!(files["atcoder/modint.hpp"].contains(&"modint".to_owned()));
             }
@@ -562,6 +631,86 @@ mod tests {
             }
             TagsKind::Std { .. } => panic!("非 std ライブラリは Library を持つべき"),
         }
+    }
+
+    #[test]
+    fn update_migrates_tags_from_an_older_schema() {
+        // 「スキーマ不一致は update で再生成」というエラー案内の受け皿として、update 自身は
+        // 旧スキーマの tags.json からでも登録パスを読み出して再登録できなければならない。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        downgrade_schema(&store, "mylib");
+
+        update(&store, Some("mylib"), None).unwrap();
+
+        assert!(
+            Tags::load(&store.tags_json("mylib")).is_ok(),
+            "update 後は現行スキーマで読めるべき"
+        );
+    }
+
+    #[test]
+    fn auto_migrate_regenerates_outdated_libraries_and_leaves_current_ones() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        downgrade_schema(&store, "mylib");
+
+        auto_migrate(&store).unwrap();
+        assert!(
+            Tags::load(&store.tags_json("mylib")).is_ok(),
+            "古い登録は移行されるべき"
+        );
+
+        // 既に現行スキーマなら再度呼んでも成功し、読める状態を保つ。
+        auto_migrate(&store).unwrap();
+        assert!(Tags::load(&store.tags_json("mylib")).is_ok());
+    }
+
+    #[test]
+    fn auto_migrate_propagates_non_schema_errors() {
+        // スキーマ不一致 (回復可) と、破損など回復不能なエラーは区別する。後者は握り潰さず伝播する。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        std::fs::write(store.tags_json("mylib"), "{ not valid json").unwrap();
+
+        assert!(auto_migrate(&store).is_err());
+    }
+
+    #[test]
+    fn list_and_show_tolerate_outdated_schema() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        downgrade_schema(&store, "mylib");
+
+        // 読み取りコマンドはスキーマ不一致でもエラーにせず、移行もしない (状態は古いまま)。
+        list(&store).unwrap();
+        show(&store, "mylib", true).unwrap();
+        assert!(
+            Tags::load(&store.tags_json("mylib")).is_err(),
+            "読み取りコマンドは登録を書き換えない"
+        );
+    }
+
+    #[test]
+    fn add_std_keeps_the_compiler_set_from_an_older_schema() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let Ok(g) = resolve_compiler(Path::new("g++")) else {
+            return; // g++ が無い環境ではスキップ
+        };
+        add_std(&store, Some(&g)).unwrap();
+        downgrade_schema(&store, "std");
+
+        add_std(&store, Some(&g)).unwrap();
+        assert!(Tags::load(&store.tags_json("std")).is_ok());
     }
 
     #[test]
