@@ -83,14 +83,14 @@ When `<id>` is not `std`:
 ```json
 {
   "schema_version": 2,
-  "path": "/usr/local/include",
+  "path": "/home/user/cp-library",
   "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "files": {
-    "atcoder/modint.hpp": ["modint", "modint_base", "modint_common"],
-    "atcoder/segtree.hpp": ["segtree"]
+    "matrix/matrix.hpp": ["Matrix", "identity"],
+    "matrix/matrix-mul.hpp": ["pow"]
   },
   "implements": {
-    "atcoder/modint_impl.hpp": ["modint"]
+    "matrix/matrix-mul.hpp": ["Matrix"]
   }
 }
 ```
