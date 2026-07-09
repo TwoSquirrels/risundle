@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, bail};
 
 use crate::cli::LibraryCommand;
-use crate::commands::compiler::resolve as resolve_compiler;
+use crate::compiler::resolve as resolve_compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
 use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};

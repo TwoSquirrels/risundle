@@ -1,6 +1,7 @@
 mod bundle;
 mod cli;
 mod commands;
+mod compiler;
 mod config;
 mod fs;
 mod library;
