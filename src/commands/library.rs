@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
 use crate::cli::LibraryCommand;
-use crate::compiler::resolve as resolve_compiler;
+use crate::compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
 use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
@@ -53,7 +52,7 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
     let requested = compiler
         .map(Path::to_path_buf)
         .unwrap_or_else(|| Config::default().compiler);
-    let resolved = resolve_compiler(&requested)?;
+    let resolved = compiler::resolve(&requested)?;
 
     let mut compilers = existing_std_compilers(store)?;
     if !compilers.contains(&resolved) {
@@ -83,7 +82,7 @@ pub fn auto_setup_std(store: &LocalStore) -> Result<()> {
     }
     let compilers: Vec<PathBuf> = AUTO_DETECT_CANDIDATES
         .iter()
-        .filter_map(|name| resolve_compiler(Path::new(name)).ok())
+        .filter_map(|name| compiler::resolve(Path::new(name)).ok())
         .collect();
     if compilers.is_empty() {
         return Ok(());
@@ -119,7 +118,7 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
 fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
     compilers
         .iter()
-        .map(|compiler| Ok((compiler.clone(), discover_system_includes(compiler)?)))
+        .map(|compiler| Ok((compiler.clone(), compiler::system_includes(compiler)?)))
         .collect()
 }
 
@@ -186,52 +185,6 @@ fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
     }
     std::fs::create_dir_all(&library_dir)
         .with_context(|| format!("failed to create {}", library_dir.display()))
-}
-
-/// `-v` 付きプリプロセスの標準エラーに出る探索リストを解析する。`CPATH` 等の環境変数は探索パスを
-/// 汚染する (ユーザーのライブラリが紛れる) ため取り除き、コンパイラ本来のシステム dir だけを得る。
-fn discover_system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
-    let output = Command::new(compiler)
-        .args(["-E", "-x", "c++", "-v", "-"])
-        .env_remove("CPATH")
-        .env_remove("C_INCLUDE_PATH")
-        .env_remove("CPLUS_INCLUDE_PATH")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .with_context(|| format!("failed to launch compiler {}", compiler.display()))?;
-    if !output.status.success() {
-        bail!(
-            "failed to detect the system include paths of compiler {}:\n{}",
-            compiler.display(),
-            String::from_utf8_lossy(&output.stderr).trim_end()
-        );
-    }
-    let roots = parse_search_dirs(&String::from_utf8_lossy(&output.stderr));
-    if roots.is_empty() {
-        bail!(
-            "could not detect any system include paths for compiler {}",
-            compiler.display()
-        );
-    }
-    Ok(roots)
-}
-
-/// `-v` 出力から `#include <...> search starts here:` 〜 `End of search list.` の dir 一覧を取り出す。
-/// 実在するディレクトリのみを realpath 化して返す。
-fn parse_search_dirs(verbose_output: &str) -> Vec<PathBuf> {
-    let mut lines = verbose_output.lines();
-    lines
-        .by_ref()
-        .find(|line| line.contains("#include <...> search starts here:"));
-    lines
-        .take_while(|line| !line.contains("End of search list."))
-        .filter_map(|line| {
-            let dir = PathBuf::from(line.trim());
-            dir.is_dir().then(|| dir.canonicalize().ok()).flatten()
-        })
-        .collect()
 }
 
 /// インクルードパスを絶対パスへ解決する。`canonicalize` は存在しないパスでエラーになるため、
@@ -545,22 +498,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_search_dirs_between_markers() {
-        let verbose = "ignored preamble\n\
-            #include \"...\" search starts here:\n\
-            #include <...> search starts here:\n \
-            /nonexistent/should/skip\n \
-            .\n\
-            End of search list.\n\
-            trailing junk\n";
-        // 実在する dir のみ realpath 化される。"." はカレントなので拾われる。
-        // 期待値も同じく canonicalize する: Windows の verbatim パス (`\\?\`) や macOS の
-        // symlink (/tmp→/private/tmp) で表記が分岐するため、関数と同じ正規化を通して比較する。
-        let dirs = parse_search_dirs(verbose);
-        assert_eq!(dirs, vec![Path::new(".").canonicalize().unwrap()]);
-    }
-
-    #[test]
     fn rejects_already_registered_id() {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
@@ -703,7 +640,7 @@ mod tests {
     fn add_std_keeps_the_compiler_set_from_an_older_schema() {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
-        let Ok(g) = resolve_compiler(Path::new("g++")) else {
+        let Ok(g) = compiler::resolve(Path::new("g++")) else {
             return; // g++ が無い環境ではスキップ
         };
         add_std(&store, Some(&g)).unwrap();
