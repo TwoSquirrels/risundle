@@ -7,7 +7,7 @@ use crate::cli::LibraryCommand;
 use crate::commands::compiler::resolve as resolve_compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
-use crate::library::tags::{MigrationSource, SchemaMismatch, Tags, TagsKind};
+use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
 use crate::library::{dummy, hash, identifiers};
 
 /// `std` として扱うライブラリ ID。識別子情報を持たず、更新検知の対象外とする。
@@ -111,7 +111,7 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     }
     // add-std は登録を作り直すため、既存の tags.json からは認識コンパイラ集合しか使わない。
     // update と同じく、スキーマの合わない登録からでも集合を引き継げるよう検証せずに読む。
-    Ok(MigrationSource::load(&store.tags_json(STD_ID))?
+    Ok(Registration::load(&store.tags_json(STD_ID))?
         .compilers
         .unwrap_or_default())
 }
@@ -320,13 +320,13 @@ pub fn auto_migrate(store: &LocalStore) -> Result<()> {
     Ok(())
 }
 
-/// tags.json から登録パス (std ならコンパイラ集合) だけを読み出し、ライブラリ実体から登録を作り直す。
+/// 既存の登録の中核 (`Registration`) からライブラリ実体を再走査し、登録を作り直す。
 ///
-/// スキーマ検証をしないため、旧スキーマの登録からでも回復できる。作り直しに使うのは登録パスと
-/// コンパイラ集合のみで、これらは全スキーマバージョンに共通して存在する。
+/// [`Registration`] はスキーマ検証をせず読むため、旧スキーマの登録からでも回復できる。std は
+/// コンパイラ集合を、通常ライブラリは登録パス (または明示された `path`) を種にして作り直す。
 fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
-    let source = MigrationSource::load(&store.tags_json(id))?;
-    match source.compilers {
+    let reg = Registration::load(&store.tags_json(id))?;
+    match reg.compilers {
         Some(compilers) => {
             if path.is_some() {
                 bail!(
@@ -339,7 +339,7 @@ fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
         None => {
             let source_root = match path {
                 Some(path) => resolve_source_root(path)?,
-                None => source.path,
+                None => reg.path,
             };
             register_library(store, id, &source_root)?;
         }
@@ -354,21 +354,13 @@ fn list(store: &LocalStore) -> Result<()> {
         return Ok(());
     }
     // ID・種別・パスしか出さず、いずれも全スキーマバージョンに共通のため、スキーマ検証をしない
-    // MigrationSource で読む。一覧はアップグレード直後でもエラーにせず動くべき (バンドル時に自動移行)。
+    // Registration で読む。一覧はアップグレード直後でもエラーにせず動くべき (バンドル時に自動移行)。
     // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
-        let source = MigrationSource::load(&store.tags_json(&id))?;
-        println!("{id}\t{}\t{}", kind_label(&source), source.path.display());
+        let reg = Registration::load(&store.tags_json(&id))?;
+        println!("{id}\t{}\t{}", reg.kind_label(), reg.path.display());
     }
     Ok(())
-}
-
-fn kind_label(source: &MigrationSource) -> &'static str {
-    if source.compilers.is_some() {
-        "std"
-    } else {
-        "library"
-    }
 }
 
 /// `show` の 1 項目を、ラベル幅を揃えて出力する。最長ラベル `Compilers` に合わせる。
@@ -390,12 +382,12 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     }
 }
 
-/// スキーマが古く詳細を読めない登録について、`MigrationSource` から読める基本情報だけ表示する。
+/// スキーマが古く詳細を読めない登録について、`Registration` から読める基本情報だけ表示する。
 fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
-    let source = MigrationSource::load(&store.tags_json(id))?;
+    let reg = Registration::load(&store.tags_json(id))?;
     show_field("ID", id);
-    show_field("Path", &source.path.display().to_string());
-    show_field("Kind", kind_label(&source));
+    show_field("Path", &reg.path.display().to_string());
+    show_field("Kind", reg.kind_label());
     show_field("Details", &format!("unavailable ({reason})"));
     Ok(())
 }

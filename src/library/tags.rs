@@ -82,18 +82,19 @@ impl Tags {
     }
 }
 
-/// `tags.json` から、登録の作り直しに必要な情報だけをスキーマ検証せず取り出したもの。
+/// スキーマに依存しない登録の中核。`path` と (std なら) `compilers` だけを、スキーマ検証をせずに
+/// 読み出す。
 ///
-/// `path` と (std なら) `compilers` は全スキーマバージョンに存在するため、それ以外のフィールドは
-/// 読み飛ばす。これにより、登録を作り直す・種別とパスだけ読む処理 (`update`・`add-std`・バンドル時の
-/// 自動移行・`list`・`show` の寛容表示) が、スキーマ不一致の登録からでも動ける。
-pub struct MigrationSource {
+/// これらは全スキーマバージョンに共通して存在するため、[`Tags`] が読めない (スキーマ不一致の) 登録
+/// からでも取り出せる。登録の作り直し・種別とパスの表示 (`update`・`add-std`・バンドル時の自動移行・
+/// `list`・`show` の寛容表示) は、この中核だけで足りる。
+pub struct Registration {
     pub path: PathBuf,
     /// `std` の登録なら `Some` (認識コンパイラ集合)、通常ライブラリなら `None`。
     pub compilers: Option<Vec<PathBuf>>,
 }
 
-impl MigrationSource {
+impl Registration {
     pub fn load(path: &Path) -> Result<Self> {
         #[derive(Deserialize)]
         struct Probe {
@@ -108,6 +109,15 @@ impl MigrationSource {
             path: probe.path,
             compilers: probe.compilers,
         })
+    }
+
+    /// 種別ラベル。`compilers` の有無が `std` / 通常ライブラリを一意に決める。
+    pub fn kind_label(&self) -> &'static str {
+        if self.compilers.is_some() {
+            "std"
+        } else {
+            "library"
+        }
     }
 }
 
