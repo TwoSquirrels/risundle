@@ -105,7 +105,7 @@ When `<id>` is `std`:
 }
 ```
 
-- `schema_version`: An integer for schema compatibility checks. On an unknown value, it raises an error prompting regeneration.
+- `schema_version`: An integer for schema compatibility checks. Registrations whose value differs from the current one are automatically regenerated from the library sources at bundle time (a cache format difference is risundle's own concern and requires no user action). `update` and `add-std` likewise read only the registered path (or the compiler set for `std`) and rebuild, so they recover even from a mismatched schema. `list` and `show` stay read-only and never regenerate, printing what they can read (`show` prints regeneration guidance in place of the details).
 - `path`: The include path (absolute). For `std`, it records a representative one among the detected system include paths (the C++ standard library dir of the first compiler) for display.
 - `compilers`: `std` only. The set of compilers that `std` was registered with (normalized to the absolute paths of the actual binaries).
 - `hash`: An aggregate hash computed from the relative paths and contents of all files under `path`. Not present for `std`.
