@@ -33,6 +33,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     if let Err(err) = cmd_library::auto_setup_std(&store) {
         eprintln!("warning: failed to auto-register the standard library: {err:#}");
     }
+    cmd_library::auto_migrate(&store)?;
 
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;

@@ -7,7 +7,7 @@ use crate::cli::LibraryCommand;
 use crate::commands::compiler::resolve as resolve_compiler;
 use crate::config::Config;
 use crate::library::local::LocalStore;
-use crate::library::tags::{MigrationSource, Tags, TagsKind};
+use crate::library::tags::{MigrationSource, SchemaMismatch, Tags, TagsKind};
 use crate::library::{dummy, hash, identifiers};
 
 /// `std` として扱うライブラリ ID。識別子情報を持たず、更新検知の対象外とする。
@@ -296,12 +296,36 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
 fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    // update は登録内容を丸ごと作り直すため、tags.json からは登録パス (std ならコンパイラ集合) しか
-    // 使わない。旧スキーマでもそれらは読めるので、スキーマ検証をせずに読み出し、update 自身が
-    // 「スキーマ不一致は update で再生成」というエラー案内の受け皿になれるようにする。
-    let source = MigrationSource::load(&store.tags_json(id))?;
-
     eprintln!("updating library `{id}`...");
+    reregister(store, id, path)?;
+    println!("updated library `{id}`");
+    Ok(())
+}
+
+/// バンドル前に呼ぶ。schema_version が現行と合わない登録を、ライブラリ実体から黙って作り直す。
+///
+/// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
+/// なので、ユーザーに `update` を要求せず自動で回復する (`std` の初回自動登録と同じ発想)。
+/// 現行スキーマで読めるものは触らない。再生成に失敗した場合はエラーを返し、呼び出し側が案内する。
+pub fn auto_migrate(store: &LocalStore) -> Result<()> {
+    for id in store.library_ids()? {
+        match Tags::load(&store.tags_json(&id)) {
+            Ok(_) => continue,
+            Err(err) if err.downcast_ref::<SchemaMismatch>().is_none() => return Err(err),
+            Err(_) => {}
+        }
+        eprintln!("migrating library `{id}` to the current tags format...");
+        reregister(store, &id, None)?;
+    }
+    Ok(())
+}
+
+/// tags.json から登録パス (std ならコンパイラ集合) だけを読み出し、ライブラリ実体から登録を作り直す。
+///
+/// スキーマ検証をしないため、旧スキーマの登録からでも回復できる。作り直しに使うのは登録パスと
+/// コンパイラ集合のみで、これらは全スキーマバージョンに共通して存在する。
+fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
+    let source = MigrationSource::load(&store.tags_json(id))?;
     match source.compilers {
         Some(compilers) => {
             if path.is_some() {
@@ -320,8 +344,6 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
             register_library(store, id, &source_root)?;
         }
     }
-
-    println!("updated library `{id}`");
     Ok(())
 }
 
@@ -413,6 +435,19 @@ mod tests {
 
     fn store_in(local: &TempDir) -> LocalStore {
         LocalStore::with_root(local.path())
+    }
+
+    /// 登録済みライブラリの tags.json を、現行と異なる schema_version に書き換える (移行の検証用)。
+    fn downgrade_schema(store: &LocalStore, id: &str) {
+        let tags_path = store.tags_json(id);
+        let old = fs::read_to_string(&tags_path)
+            .unwrap()
+            .replace("\"schema_version\": 2", "\"schema_version\": 1");
+        fs::write(&tags_path, old).unwrap();
+        assert!(
+            Tags::load(&tags_path).is_err(),
+            "旧スキーマは通常読み込みでは弾かれる前提"
+        );
     }
 
     #[test]
@@ -590,23 +625,33 @@ mod tests {
         let store = store_in(&local);
         let source = source_with(&[("vec.hpp", "struct Vec {};")]);
         add(&store, "mylib", source.path()).unwrap();
-
-        let tags_path = store.tags_json("mylib");
-        let old_json = fs::read_to_string(&tags_path)
-            .unwrap()
-            .replace("\"schema_version\": 2", "\"schema_version\": 1");
-        fs::write(&tags_path, old_json).unwrap();
-        assert!(
-            Tags::load(&tags_path).is_err(),
-            "旧スキーマは通常読み込みでは弾かれる前提"
-        );
+        downgrade_schema(&store, "mylib");
 
         update(&store, Some("mylib"), None).unwrap();
 
         assert!(
-            Tags::load(&tags_path).is_ok(),
+            Tags::load(&store.tags_json("mylib")).is_ok(),
             "update 後は現行スキーマで読めるべき"
         );
+    }
+
+    #[test]
+    fn auto_migrate_regenerates_outdated_libraries_and_leaves_current_ones() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vec.hpp", "struct Vec {};")]);
+        add(&store, "mylib", source.path()).unwrap();
+        downgrade_schema(&store, "mylib");
+
+        auto_migrate(&store).unwrap();
+        assert!(
+            Tags::load(&store.tags_json("mylib")).is_ok(),
+            "古い登録は移行されるべき"
+        );
+
+        // 既に現行スキーマなら再度呼んでも成功し、読める状態を保つ。
+        auto_migrate(&store).unwrap();
+        assert!(Tags::load(&store.tags_json("mylib")).is_ok());
     }
 
     #[test]
@@ -617,16 +662,11 @@ mod tests {
             return; // g++ が無い環境ではスキップ
         };
         add_std(&store, Some(&g)).unwrap();
-
-        let tags_path = store.tags_json("std");
-        let old_json = fs::read_to_string(&tags_path)
-            .unwrap()
-            .replace("\"schema_version\": 2", "\"schema_version\": 1");
-        fs::write(&tags_path, old_json).unwrap();
+        downgrade_schema(&store, "std");
 
         // スキーマの合わない登録があっても、add-std は集合を引き継いで作り直せる。
         add_std(&store, Some(&g)).unwrap();
-        assert!(Tags::load(&tags_path).is_ok());
+        assert!(Tags::load(&store.tags_json("std")).is_ok());
     }
 
     #[test]
