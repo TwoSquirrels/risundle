@@ -9,6 +9,28 @@ use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
 
+/// `tags.json` の schema_version が現行と異なることを表すエラー。
+///
+/// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
+/// なので、呼び出し側はこのエラーを検知したら自動再登録で回復してよい (バンドル前の自動移行や
+/// `list`/`show` の寛容表示が [`anyhow::Error::downcast_ref`] で判別する)。
+#[derive(Debug, PartialEq, Eq)]
+pub struct SchemaMismatch {
+    pub found: u32,
+}
+
+impl std::fmt::Display for SchemaMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tags.json schema_version {} is not supported (supported: {CURRENT_SCHEMA_VERSION}); regenerate it with `risundle library update`",
+            self.found
+        )
+    }
+}
+
+impl std::error::Error for SchemaMismatch {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tags {
     pub path: PathBuf,
@@ -110,11 +132,10 @@ impl TryFrom<RawTags> for Tags {
 
     fn try_from(raw: RawTags) -> Result<Self> {
         if raw.schema_version != CURRENT_SCHEMA_VERSION {
-            bail!(
-                "tags.json schema_version {} is not supported (supported: {}); regenerate it with `risundle library update`",
-                raw.schema_version,
-                CURRENT_SCHEMA_VERSION
-            );
+            return Err(SchemaMismatch {
+                found: raw.schema_version,
+            }
+            .into());
         }
         let kind = match (raw.compilers, raw.hash, raw.files) {
             (Some(compilers), None, None) if raw.implements.is_none() => {
@@ -264,11 +285,14 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_schema_version_is_rejected() {
-        // v1 (implements 導入前) は再登録を促すエラーになる。
+    fn unsupported_schema_version_is_reported_as_schema_mismatch() {
+        // スキーマ不一致は SchemaMismatch として判別でき、呼び出し側が自動再登録で回復できる。
         let json = r#"{ "schema_version": 1, "path": "/usr/include/c++/12", "compilers": ["/usr/bin/g++"] }"#;
         let error = Tags::from_json(json).unwrap_err();
-        assert!(error.to_string().contains("schema_version"));
+        assert_eq!(
+            error.downcast_ref::<SchemaMismatch>(),
+            Some(&SchemaMismatch { found: 1 })
+        );
         assert!(error.to_string().contains("library update"));
     }
 
