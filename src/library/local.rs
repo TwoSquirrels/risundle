@@ -47,7 +47,11 @@ impl LocalStore {
     /// (Windows/macOS の `dirs` は OS 標準の API を使う) ため、テストの隔離や置き場所の変更に
     /// 全 OS 共通で使える上書き手段として持つ。
     pub fn discover() -> Result<Self> {
-        if let Some(data_home) = std::env::var_os("RISUNDLE_DATA_HOME") {
+        // 空文字列は未設定と同義に扱う (XDG Base Directory の慣例)。空のまま通すと相対パスになり、
+        // カレントディレクトリ配下へ意図せず読み書きしてしまう。
+        if let Some(data_home) = std::env::var_os("RISUNDLE_DATA_HOME")
+            && !data_home.is_empty()
+        {
             return Ok(Self::with_root(
                 PathBuf::from(data_home).join(Self::APP_DIR),
             ));
