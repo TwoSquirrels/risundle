@@ -325,7 +325,7 @@ mod tests {
         update(&store, Some("lib"), Some(moved.path())).unwrap();
 
         let tags = Tags::load(&store.tags_json("lib").unwrap()).unwrap();
-        assert_eq!(tags.path, moved.path().canonicalize().unwrap());
+        assert_eq!(tags.path, dunce::canonicalize(moved.path()).unwrap());
         assert!(store.dummy_dir("lib").unwrap().join("b.hpp").is_file());
         assert!(!store.dummy_dir("lib").unwrap().join("a.hpp").is_file());
     }

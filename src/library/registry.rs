@@ -163,10 +163,14 @@ fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
         .with_context(|| format!("failed to create {}", library_dir.display()))
 }
 
-/// インクルードパスを絶対パスへ解決する。`canonicalize` は存在しないパスでエラーになるため、
+/// インクルードパスを絶対パスへ解決する。canonicalize は存在しないパスでエラーになるため、
 /// 絶対パス化と存在確認を兼ねる。
+///
+/// `dunce::canonicalize` を使うのは Windows 対策。`std` の canonicalize は verbatim パス
+/// (`\\?\C:\...`) を返し、これを `-I` に渡されたコンパイラはヘッダーを解決できない。
+/// バンドル側の canonicalize も、突き合わせがずれないよう同じ理由で dunce に統一している。
 pub fn resolve_source_root(path: &Path) -> Result<PathBuf> {
-    path.canonicalize()
+    dunce::canonicalize(path)
         .with_context(|| format!("failed to resolve include path {}", path.display()))
 }
 

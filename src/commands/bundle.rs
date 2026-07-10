@@ -55,8 +55,8 @@ pub fn run(args: BundleArgs) -> Result<()> {
     let compiler_args = compiler_args(&settings, &inventory);
     let preprocessed = preprocess(&settings.compiler, &compiler_args, &file)?;
 
-    let target = file
-        .canonicalize()
+    // canonicalize は一律 dunce 版を使う (理由は registry::resolve_source_root を参照)。
+    let target = dunce::canonicalize(&file)
         .with_context(|| format!("failed to resolve {}", file.display()))?;
     let unused = if no_tree_shaking {
         BTreeSet::new()
@@ -86,7 +86,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
 /// でもなければファイル名のみへ落とす。提出物にホームディレクトリ名などローカルの絶対パスを残さない
 /// のが目的。`<built-in>` 等 realpath 化できない出所はそのまま残す (デバッグの手掛かりとして無害)。
 fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>) -> String {
-    let Ok(canonical) = Path::new(origin).canonicalize() else {
+    let Ok(canonical) = dunce::canonicalize(origin) else {
         return origin.to_owned();
     };
     if let Some(relative) = inventory.library_relative(&canonical) {
@@ -230,7 +230,7 @@ fn scan_origins(
         };
         let canonical = canonical_cache
             .entry(origin.to_owned())
-            .or_insert_with(|| Path::new(origin).canonicalize().ok())
+            .or_insert_with(|| dunce::canonicalize(origin).ok())
             .clone();
         let Some(canonical) = canonical else {
             continue; // <built-in> など実在しない出所は無視
@@ -258,7 +258,7 @@ fn needed_headers(
     let make_output = make_dependencies(compiler, compiler_args, dependency_headers)?;
     Ok(prune::parse_prerequisites(&make_output)
         .iter()
-        .filter_map(|path| path.canonicalize().ok())
+        .filter_map(|path| dunce::canonicalize(path).ok())
         .collect())
 }
 

@@ -22,6 +22,7 @@ tree-sitter = "0.26.9"
 tree-sitter-cpp = "0.23.4"
 sha2 = "0.11.0"
 logos = "0.16.1"
+dunce = "1.0.5"
 
 [lints.rust]
 unsafe_code = "forbid"

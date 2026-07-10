@@ -220,7 +220,7 @@ mod tests {
     fn register(store: &LocalStore, id: &str, kind: TagsKind) -> PathBuf {
         let source = store.library_dir(id).unwrap().join("source");
         fs::create_dir_all(&source).unwrap();
-        let path = source.canonicalize().unwrap();
+        let path = dunce::canonicalize(&source).unwrap();
         Tags {
             path: path.clone(),
             kind,
@@ -473,7 +473,7 @@ mod tests {
         let source = store.library_dir("lib").unwrap().join("source");
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("a.hpp"), "struct a {};").unwrap();
-        let path = source.canonicalize().unwrap();
+        let path = dunce::canonicalize(&source).unwrap();
         let real_hash = hash::aggregate(&path).unwrap();
 
         let mut files = BTreeMap::new();

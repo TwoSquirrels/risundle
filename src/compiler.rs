@@ -107,7 +107,10 @@ fn parse_search_dirs(verbose_output: &str) -> Vec<PathBuf> {
         .take_while(|line| !line.contains("End of search list."))
         .filter_map(|line| {
             let dir = PathBuf::from(line.trim());
-            dir.is_dir().then(|| dir.canonicalize().ok()).flatten()
+            // dunce 版 canonicalize で Windows の verbatim パス化を避ける (registry 側の解決と同じ規則)。
+            dir.is_dir()
+                .then(|| dunce::canonicalize(&dir).ok())
+                .flatten()
         })
         .collect()
 }
@@ -212,10 +215,10 @@ mod tests {
             End of search list.\n\
             trailing junk\n";
         // 実在する dir のみ realpath 化される。"." はカレントなので拾われる。
-        // 期待値も同じく canonicalize する: Windows の verbatim パス (`\\?\`) や macOS の
-        // symlink (/tmp→/private/tmp) で表記が分岐するため、関数と同じ正規化を通して比較する。
+        // 期待値も関数と同じ正規化 (dunce) を通して比較する: macOS の symlink (/tmp→/private/tmp)
+        // などで素のパスとは表記が分岐するため。
         let dirs = parse_search_dirs(verbose);
-        assert_eq!(dirs, vec![Path::new(".").canonicalize().unwrap()]);
+        assert_eq!(dirs, vec![dunce::canonicalize(Path::new(".")).unwrap()]);
     }
 
     #[cfg(unix)]
@@ -236,7 +239,7 @@ mod tests {
 
         assert_eq!(
             system_includes(&cc).unwrap(),
-            vec![include_dir.canonicalize().unwrap()]
+            vec![dunce::canonicalize(&include_dir).unwrap()]
         );
     }
 
