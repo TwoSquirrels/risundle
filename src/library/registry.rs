@@ -366,6 +366,100 @@ mod tests {
     }
 
     #[test]
+    fn reregister_rejects_a_path_for_std() {
+        // std の実体はコンパイラから検出するもので、パス指定は意味を持たないため弾く。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let roots = source_with(&[("vector", "// std header")]);
+        register_std(
+            &store,
+            &[(
+                PathBuf::from("/usr/bin/g++"),
+                vec![roots.path().to_path_buf()],
+            )],
+        )
+        .unwrap();
+
+        let err = reregister(&store, STD_ID, Some(Path::new("/tmp")))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("cannot be specified for the standard library"),
+            "{err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reregister_rediscovers_std_from_the_stored_compilers() {
+        use crate::library::testutil::fake_compiler_with_includes;
+
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let scripts = TempDir::new().unwrap();
+        let include = source_with(&[("vector", "// std header")]);
+        let cc = fake_compiler_with_includes(scripts.path(), include.path());
+        register_std(&store, &[(cc.clone(), vec![include.path().to_path_buf()])]).unwrap();
+
+        // ダミーツリーを消し、path 無しの再登録が保存済みコンパイラから再検出することを確かめる。
+        fs::remove_dir_all(store.dummy_dir(STD_ID).unwrap()).unwrap();
+        reregister(&store, STD_ID, None).unwrap();
+
+        assert!(store.dummy_dir(STD_ID).unwrap().join("vector").is_file());
+        let tags = Tags::load(&store.tags_json(STD_ID).unwrap()).unwrap();
+        assert_eq!(
+            tags.kind,
+            TagsKind::Std {
+                compilers: vec![cc]
+            }
+        );
+    }
+
+    #[test]
+    fn auto_setup_std_skips_when_already_registered() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let roots = source_with(&[("vector", "// std header")]);
+        let marker = PathBuf::from("/opt/previous-g++");
+        register_std(
+            &store,
+            &[(marker.clone(), vec![roots.path().to_path_buf()])],
+        )
+        .unwrap();
+
+        auto_setup_std(&store).unwrap();
+
+        // 実コンパイラの有無に関わらず、既存の登録は上書きされない。
+        let tags = Tags::load(&store.tags_json(STD_ID).unwrap()).unwrap();
+        assert_eq!(
+            tags.kind,
+            TagsKind::Std {
+                compilers: vec![marker]
+            }
+        );
+    }
+
+    #[test]
+    fn auto_setup_std_registers_detected_compilers() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        if compiler::resolve(Path::new("g++")).is_err()
+            && compiler::resolve(Path::new("clang++")).is_err()
+        {
+            return; // 候補コンパイラが無い環境ではスキップ
+        }
+
+        auto_setup_std(&store).unwrap();
+
+        assert!(store.is_registered(STD_ID));
+        let tags = Tags::load(&store.tags_json(STD_ID).unwrap()).unwrap();
+        let TagsKind::Std { compilers } = tags.kind else {
+            panic!("std は Std 種別で登録されるべき");
+        };
+        assert!(!compilers.is_empty());
+    }
+
+    #[test]
     fn add_std_keeps_the_compiler_set_from_an_older_schema() {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
