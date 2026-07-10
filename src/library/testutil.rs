@@ -3,12 +3,14 @@
 
 use std::fs;
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use tempfile::TempDir;
 
 use crate::library::local::LocalStore;
-use crate::library::tags::Tags;
+use crate::library::registry::STD_ID;
+use crate::library::tags::{Tags, TagsKind};
 
 pub fn source_with(files: &[(&str, &str)]) -> TempDir {
     let temp = TempDir::new().unwrap();
@@ -41,6 +43,17 @@ pub fn fake_compiler_with_includes(dir: &Path, include_dir: &Path) -> PathBuf {
             include_dir.display()
         ),
     )
+}
+
+/// std の登録を `tags.json` 直書きで用意する。コンパイラを起動せずに std がらみの分岐を検証するため。
+pub fn write_std_registration(store: &LocalStore, compilers: Vec<PathBuf>) {
+    fs::create_dir_all(store.library_dir(STD_ID).unwrap()).unwrap();
+    Tags {
+        path: PathBuf::from("/usr/include/c++/14"),
+        kind: TagsKind::Std { compilers },
+    }
+    .save(&store.tags_json(STD_ID).unwrap())
+    .unwrap();
 }
 
 /// 登録済みライブラリの `tags.json` を、現行と異なる `schema_version` に書き換える (移行の検証用)。
