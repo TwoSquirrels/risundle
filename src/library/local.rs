@@ -41,7 +41,17 @@ impl LocalStore {
     const DUMMY_DIR: &'static str = "dummy";
 
     /// OS 標準のデータディレクトリから `$LOCAL` を解決する。
+    ///
+    /// `RISUNDLE_DATA_HOME` が設定されていればそちらを優先する (意味は `XDG_DATA_HOME` と同じで、
+    /// その配下の `risundle` が `$LOCAL` になる)。`XDG_DATA_HOME` は Linux でしか効かない
+    /// (Windows/macOS の `dirs` は OS 標準の API を使う) ため、テストの隔離や置き場所の変更に
+    /// 全 OS 共通で使える上書き手段として持つ。
     pub fn discover() -> Result<Self> {
+        if let Some(data_home) = std::env::var_os("RISUNDLE_DATA_HOME") {
+            return Ok(Self::with_root(
+                PathBuf::from(data_home).join(Self::APP_DIR),
+            ));
+        }
         let data_local =
             dirs::data_local_dir().context("could not determine the OS local data directory")?;
         Ok(Self::with_root(data_local.join(Self::APP_DIR)))

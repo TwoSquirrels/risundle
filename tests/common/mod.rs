@@ -1,5 +1,6 @@
-//! E2E テストの共通基盤。各テストを独立した `$LOCAL` (`XDG_DATA_HOME`) と作業ディレクトリへ隔離し、
-//! 実バイナリを CLI 経由で起動する。内部構造に踏み込まず、ユーザーが叩くコマンドだけを通すことで、
+//! E2E テストの共通基盤。各テストを独立した `$LOCAL` (`RISUNDLE_DATA_HOME`。`XDG_DATA_HOME` は
+//! Linux でしか効かないため全 OS 共通の上書きを使う) と作業ディレクトリへ隔離し、実バイナリを
+//! CLI 経由で起動する。内部構造に踏み込まず、ユーザーが叩くコマンドだけを通すことで、
 //! 実装変更に強い E2E を保つ。
 //!
 //! テスト対象のコンパイラは [`test_compiler`] (`RISUNDLE_TEST_COMPILER`、既定 g++) で決まり、
@@ -61,7 +62,7 @@ fn std_template() -> &'static Path {
             let status = Command::cargo_bin("risundle")
                 .expect("locate risundle binary")
                 .args(["library", "add-std", test_compiler()])
-                .env("XDG_DATA_HOME", data.path())
+                .env("RISUNDLE_DATA_HOME", data.path())
                 .status()
                 .expect("run library add-std");
             assert!(
@@ -107,11 +108,11 @@ impl Sandbox {
         }
     }
 
-    /// `XDG_DATA_HOME` と作業ディレクトリを束ねた risundle コマンドを返す。
+    /// `RISUNDLE_DATA_HOME` と作業ディレクトリを束ねた risundle コマンドを返す。
     pub fn risundle(&self) -> Command {
         let mut command = Command::cargo_bin("risundle").expect("locate risundle binary");
         command
-            .env("XDG_DATA_HOME", self.data.path())
+            .env("RISUNDLE_DATA_HOME", self.data.path())
             .current_dir(self.work.path());
         command
     }

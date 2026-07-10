@@ -10,7 +10,7 @@ README より踏み込んだ、各コマンドの挙動・エラー条件・出�
 - tree-shaking は識別子名の照合による近似で、厳密な依存解析はしない。過剰に残す方向へ倒しているため必要なコードが誤って消えることは起きにくく、万一取りこぼしても提出時のコンパイルエラーで気づける。
 - マクロは展開される。ローカルデバッグ用の `#include` も tree-shaking の対象にできるようにするため。
 - 複数ソースファイルのバンドルには対応しない。
-- 登録済みライブラリなどの内部データは、[`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) 配下の `risundle` ディレクトリ (以後 `$LOCAL`) に保存する。
+- 登録済みライブラリなどの内部データは、[`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) 配下の `risundle` ディレクトリ (以後 `$LOCAL`) に保存する。環境変数 `RISUNDLE_DATA_HOME` を設定すると、どの OS でも基準ディレクトリを上書きできる (意味は `XDG_DATA_HOME` と同じ)。
 
 ## `library` サブコマンド
 
