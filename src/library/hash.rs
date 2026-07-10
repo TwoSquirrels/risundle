@@ -29,10 +29,14 @@ pub fn aggregate(root: &Path) -> Result<String> {
         hasher.update(&content);
     }
 
-    let hex = hasher.finalize().iter().fold(String::new(), |mut hex, b| {
-        let _ = write!(hex, "{b:02x}");
-        hex
-    });
+    // sha256 のダイジェストは 32 バイト = 16 進 64 文字で固定。
+    let hex = hasher
+        .finalize()
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        });
     Ok(format!("sha256:{hex}"))
 }
 
