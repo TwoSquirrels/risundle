@@ -36,22 +36,37 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
-  # macOS/Windows はユニットテストとビルド健全性のみ (--bins)。tests/ 配下の統合・E2E テストは
-  # GCC 専用 (<bits/stdc++.h> や実 GCC ライブラリ) で clang/MinGW では動かないため、ここでは走らせない。
-  # それらフルスイートは下の coverage ジョブ (Linux + g++ + submodules) で実行している。
+  # OS とコンパイラの各軸を最低 1 回ずつ踏むフルスイート (ユニット + tests/ の統合・E2E)。
+  # Ubuntu + g++ の組は下の coverage ジョブが兼ねるためここには置かない。E2E のコンパイラは
+  # RISUNDLE_TEST_COMPILER で切り替わり、<bits/stdc++.h> に依存するテストはそれを提供しない
+  # コンパイラ (libc++ の Apple clang 等) で自己スキップする。Windows の clang++ は既定で MSVC の
+  # 標準ライブラリと繋がる特殊構成のため対象外。
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-26-intel, windows-latest]
+        include:
+          - os: ubuntu-latest
+            compiler: clang++
+          - os: macos-latest
+            compiler: clang++
+          - os: macos-26-intel
+            compiler: clang++
+          - os: windows-latest
+            compiler: g++
+    env:
+      RISUNDLE_TEST_COMPILER: ${{ matrix.compiler }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          submodules: recursive
           persist-credentials: false
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - run: cargo test --locked --all-features --bins
+      # ランナー標準のコンパイラに依存しているため、無ければここで分かりやすく落とす。
+      - run: ${{ matrix.compiler }} --version
+      - run: cargo test --locked --all-features
 
   # Linux のフルスイート (ユニット + tests/ の統合・E2E) を計測し、Pages へカバレッジを公開する。
   coverage:

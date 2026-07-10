@@ -41,7 +41,21 @@ impl LocalStore {
     const DUMMY_DIR: &'static str = "dummy";
 
     /// OS 標準のデータディレクトリから `$LOCAL` を解決する。
+    ///
+    /// `RISUNDLE_DATA_HOME` が設定されていればそちらを優先する (意味は `XDG_DATA_HOME` と同じで、
+    /// その配下の `risundle` が `$LOCAL` になる)。`XDG_DATA_HOME` は Linux でしか効かない
+    /// (Windows/macOS の `dirs` は OS 標準の API を使う) ため、テストの隔離や置き場所の変更に
+    /// 全 OS 共通で使える上書き手段として持つ。
     pub fn discover() -> Result<Self> {
+        // 空文字列は未設定と同義に扱う (XDG Base Directory の慣例)。空のまま通すと相対パスになり、
+        // カレントディレクトリ配下へ意図せず読み書きしてしまう。
+        if let Some(data_home) = std::env::var_os("RISUNDLE_DATA_HOME")
+            && !data_home.is_empty()
+        {
+            return Ok(Self::with_root(
+                PathBuf::from(data_home).join(Self::APP_DIR),
+            ));
+        }
         let data_local =
             dirs::data_local_dir().context("could not determine the OS local data directory")?;
         Ok(Self::with_root(data_local.join(Self::APP_DIR)))
@@ -169,5 +183,43 @@ mod tests {
         assert_eq!(store.library_ids().unwrap(), vec!["ac-library", "std"]);
         assert!(store.is_registered("std"));
         assert!(!store.is_registered("incomplete"));
+    }
+
+    #[test]
+    fn library_ids_reports_an_unreadable_libraries_dir() {
+        // NotFound (未作成 = 登録ゼロ) 以外の読み取りエラーは握り潰さず文脈付きで返す。
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        fs::write(store.libraries_dir(), "").unwrap(); // ディレクトリの位置にファイル
+
+        assert!(store.library_ids().is_err());
+    }
+
+    #[test]
+    fn library_ids_skips_stray_files() {
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        register(&store, "lib");
+        fs::write(store.libraries_dir().join("README.txt"), "").unwrap();
+
+        assert_eq!(store.library_ids().unwrap(), vec!["lib"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn library_ids_skips_non_utf8_names() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        register(&store, "lib");
+        // APFS (macOS) などは不正な UTF-8 のファイル名自体を作らせないため、作れた場合のみ検証する。
+        if fs::create_dir_all(store.libraries_dir().join(OsStr::from_bytes(b"\xff"))).is_err() {
+            eprintln!("skipped: このファイルシステムは非 UTF-8 のファイル名を作れない");
+            return;
+        }
+
+        assert_eq!(store.library_ids().unwrap(), vec!["lib"]);
     }
 }

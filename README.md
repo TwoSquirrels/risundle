@@ -22,7 +22,7 @@ risundle bundles your competitive programming solution, libraries included, into
 
 ## Installation
 
-You need the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C++ compiler (such as `g++`).
+You need the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C++ compiler with a GCC-compatible driver interface, such as `g++` or `clang++` (MSVC is not supported, as it lacks the `-E`/`-M`/`-v` interface risundle relies on).
 
 ```bash
 cargo install risundle

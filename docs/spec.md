@@ -10,7 +10,7 @@ This document goes deeper than the README, covering each command's behavior, err
 - Tree-shaking is an approximation based on identifier-name matching, not strict dependency analysis. It errs toward keeping too much, so needed code is rarely removed by mistake, and even if something is missed, you notice it through a compile error at submission time.
 - Macros are expanded. This is so that `#include`s used only for local debugging can also be subject to tree-shaking.
 - Bundling multiple source files is not supported.
-- Internal data such as registered libraries is stored under a `risundle` directory inside [`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) (hereafter `$LOCAL`).
+- Internal data such as registered libraries is stored under a `risundle` directory inside [`dirs::data_local_dir()`](https://docs.rs/dirs/latest/dirs/fn.data_local_dir.html) (hereafter `$LOCAL`). Setting the `RISUNDLE_DATA_HOME` environment variable overrides the base directory on every OS (same meaning as `XDG_DATA_HOME`).
 
 ## `library` subcommand
 

@@ -22,7 +22,7 @@
 
 ## インストール
 
-[Rust ツールチェーン](https://www.rust-lang.org/tools/install) と C++ コンパイラ (`g++` など) が必要です。
+[Rust ツールチェーン](https://www.rust-lang.org/tools/install) と、GCC 互換の C++ コンパイラ (`g++` や `clang++` など) が必要です。risundle が依存する `-E`/`-M`/`-v` オプションを持たない MSVC には対応していません。
 
 ```bash
 cargo install risundle

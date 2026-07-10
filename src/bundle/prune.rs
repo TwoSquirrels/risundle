@@ -30,19 +30,24 @@ pub fn parse_prerequisites(make_output: &str) -> BTreeSet<PathBuf> {
     prerequisites
 }
 
-/// 空白区切りでトークン化する。バックスラッシュは直後の 1 文字をエスケープ (`\ ` は空白を含む
-/// パスの一部)。行継続は呼び出し前に畳まれている前提。
+/// 空白区切りでトークン化する。make の流儀でエスケープされる空白 (`\ `) と `#` (`\#`) だけを
+/// 復元し、それ以外のバックスラッシュはそのまま残す。無差別に「直後の 1 文字」をエスケープ扱い
+/// すると、MinGW g++ が -M 出力へそのまま書く Windows パス (`C:\Users\...`) の区切りが食われて
+/// パスが壊れ、必要ヘッダーを全て取りこぼす (= 全削除) 事故になる。行継続は呼び出し前に畳まれて
+/// いる前提。
 fn tokenize(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
-    let mut chars = input.chars();
+    let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
-            '\\' => {
-                if let Some(escaped) = chars.next() {
-                    current.push(escaped);
+            '\\' => match chars.peek() {
+                Some(&next @ (' ' | '#')) => {
+                    current.push(next);
+                    chars.next();
                 }
-            }
+                _ => current.push('\\'),
+            },
             ch if ch.is_whitespace() => {
                 if !current.is_empty() {
                     tokens.push(std::mem::take(&mut current));
@@ -112,6 +117,15 @@ mod tests {
     fn restores_escaped_spaces_in_paths() {
         let prerequisites = parse_prerequisites("a.o: /home/My\\ Docs/lib.hpp");
         assert!(prerequisites.contains(&PathBuf::from("/home/My Docs/lib.hpp")));
+    }
+
+    #[test]
+    fn keeps_windows_path_backslashes_intact() {
+        // MinGW g++ は Windows パスの `\` をエスケープせずそのまま出す。区切りを食うとドライブ
+        // パスが壊れ、必要ヘッダーの取りこぼし = 使用ヘッダーの誤削除に直結する。
+        let prerequisites = parse_prerequisites(r"used.o: C:\Users\me\lib\used.hpp D:/other/x.h");
+        assert!(prerequisites.contains(&PathBuf::from(r"C:\Users\me\lib\used.hpp")));
+        assert!(prerequisites.contains(&PathBuf::from("D:/other/x.h")));
     }
 
     #[test]

@@ -55,8 +55,8 @@ pub fn run(args: BundleArgs) -> Result<()> {
     let compiler_args = compiler_args(&settings, &inventory);
     let preprocessed = preprocess(&settings.compiler, &compiler_args, &file)?;
 
-    let target = file
-        .canonicalize()
+    // canonicalize は一律 dunce 版を使う (理由は registry::resolve_source_root を参照)。
+    let target = dunce::canonicalize(&file)
         .with_context(|| format!("failed to resolve {}", file.display()))?;
     let unused = if no_tree_shaking {
         BTreeSet::new()
@@ -86,7 +86,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
 /// でもなければファイル名のみへ落とす。提出物にホームディレクトリ名などローカルの絶対パスを残さない
 /// のが目的。`<built-in>` 等 realpath 化できない出所はそのまま残す (デバッグの手掛かりとして無害)。
 fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>) -> String {
-    let Ok(canonical) = Path::new(origin).canonicalize() else {
+    let Ok(canonical) = dunce::canonicalize(origin) else {
         return origin.to_owned();
     };
     if let Some(relative) = inventory.library_relative(&canonical) {
@@ -230,7 +230,7 @@ fn scan_origins(
         };
         let canonical = canonical_cache
             .entry(origin.to_owned())
-            .or_insert_with(|| Path::new(origin).canonicalize().ok())
+            .or_insert_with(|| dunce::canonicalize(origin).ok())
             .clone();
         let Some(canonical) = canonical else {
             continue; // <built-in> など実在しない出所は無視
@@ -258,7 +258,7 @@ fn needed_headers(
     let make_output = make_dependencies(compiler, compiler_args, dependency_headers)?;
     Ok(prune::parse_prerequisites(&make_output)
         .iter()
-        .filter_map(|path| path.canonicalize().ok())
+        .filter_map(|path| dunce::canonicalize(path).ok())
         .collect())
 }
 
@@ -320,4 +320,135 @@ fn run_capturing(mut command: Command, compiler: &Path, what: &str) -> Result<St
     }
     String::from_utf8(output.stdout)
         .with_context(|| format!("the output of {what} could not be interpreted as UTF-8"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tempfile::TempDir;
+
+    use crate::config::Config;
+    use crate::library::local::LocalStore;
+    use crate::library::testutil::{store_in, write_std_registration};
+
+    fn empty_inventory(store: &LocalStore) -> Inventory {
+        Inventory::load(store, &BTreeSet::new()).unwrap()
+    }
+
+    /// `compiler::resolve` が通る「コンパイラ」(中身は空ファイル) を作る。警告の照合はパスの
+    /// 突き合わせだけで、起動はしない。
+    fn stub_compiler(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "").unwrap();
+        path
+    }
+
+    #[test]
+    fn warn_std_compiler_handles_every_registration_state() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる
+        // (経路の選択自体は resolve と集合照合のロジックで、ここで実行される)。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let bins = TempDir::new().unwrap();
+        let known = stub_compiler(bins.path(), "g++");
+        let unknown = stub_compiler(bins.path(), "clang++");
+
+        // std 未登録 → 登録を促す警告。
+        warn_std_compiler(&known, &empty_inventory(&store));
+
+        write_std_registration(&store, vec![std::path::absolute(&known).unwrap()]);
+        let inventory = empty_inventory(&store);
+        // 認識済みコンパイラ → 警告なし。
+        warn_std_compiler(&known, &inventory);
+        // 認識外コンパイラ → add-std を促す警告。
+        warn_std_compiler(&unknown, &inventory);
+        // 解決できないコンパイラ → 照合せず戻る (バンドル本体が改めて報告する)。
+        warn_std_compiler(Path::new("no/such/compiler"), &inventory);
+    }
+
+    #[test]
+    fn display_origin_falls_back_to_the_raw_origin() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let inventory = empty_inventory(&store);
+
+        // "/" は realpath 化できるがファイル名を持たない → 出所文字列のまま。
+        assert_eq!(display_origin("/", &inventory, None), "/");
+        // 実在しない出所 (<built-in> など) もそのまま残す。
+        assert_eq!(display_origin("<built-in>", &inventory, None), "<built-in>");
+    }
+
+    #[test]
+    fn needed_headers_without_dependencies_skips_the_compiler() {
+        // 依存ヘッダーが無ければ空集合 (= 全候補が不要)。コンパイラは起動されないので、
+        // 存在しないパスを渡しても成功することがその証明になる。
+        let needed =
+            needed_headers(Path::new("compiler-must-not-run"), &[], &BTreeSet::new()).unwrap();
+        assert!(needed.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preprocess_reports_compiler_failure_with_its_stderr() {
+        use crate::library::testutil::fake_compiler;
+
+        let scripts = TempDir::new().unwrap();
+        let cc = fake_compiler(scripts.path(), "echo 'syntax error' >&2\nexit 1");
+
+        let err = preprocess(&cc, &[], Path::new("main.cpp"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("preprocessing failed"), "{err}");
+        assert!(
+            err.contains("syntax error"),
+            "原因特定のためコンパイラの標準エラーを含めるべき: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_capturing_rejects_non_utf8_output() {
+        use crate::library::testutil::fake_compiler;
+
+        let scripts = TempDir::new().unwrap();
+        let cc = fake_compiler(scripts.path(), "printf '\\377'");
+
+        let err = preprocess(&cc, &[], Path::new("main.cpp"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("could not be interpreted as UTF-8"), "{err}");
+    }
+
+    #[test]
+    fn settings_prefer_cli_values_and_fall_back_to_defaults() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        // CLI で明示された値が勝つ。
+        let cli = Settings::resolve(
+            &file,
+            Some(PathBuf::from("my-g++")),
+            vec!["-O2".to_owned()],
+            vec!["ac-library".to_owned()],
+            true,
+        )
+        .unwrap();
+        assert_eq!(cli.compiler, PathBuf::from("my-g++"));
+        assert_eq!(cli.options, vec!["-O2".to_owned()]);
+        assert!(cli.keep.contains("ac-library"));
+        assert!(cli.embed);
+
+        // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
+        let defaults = Settings::resolve(&file, None, vec![], vec![], false).unwrap();
+        let expected = Config::default();
+        assert_eq!(defaults.compiler, expected.compiler);
+        assert_eq!(defaults.options, expected.options);
+        assert_eq!(
+            defaults.keep,
+            expected.keep.into_iter().collect::<BTreeSet<_>>()
+        );
+        assert!(!defaults.embed);
+    }
 }

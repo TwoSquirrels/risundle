@@ -121,6 +121,12 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn resolve_rejects_an_empty_start_path() {
+        // 空パスは絶対パス化できず探索起点が定まらないため、文脈付きで失敗する。
+        assert!(resolve(Path::new("")).is_err());
+    }
+
+    #[test]
     fn omitted_fields_fall_back_to_builtin_defaults() {
         let raw: RawConfig = toml::from_str("[bundle]\nembed = true\n").unwrap();
         let config: Config = raw.into();

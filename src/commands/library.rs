@@ -194,10 +194,13 @@ mod tests {
     use super::*;
 
     use std::fs;
+    use std::path::PathBuf;
 
     use tempfile::TempDir;
 
-    use crate::library::testutil::{downgrade_schema, source_with, store_in};
+    use crate::library::testutil::{
+        downgrade_schema, source_with, store_in, write_std_registration,
+    };
 
     #[test]
     fn add_rejects_std_id() {
@@ -235,6 +238,35 @@ mod tests {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
         assert!(add(&store, "lib", &local.path().join("nonexistent")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn add_std_registers_via_the_requested_compiler() {
+        use crate::library::testutil::fake_compiler_with_includes;
+
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let scripts = TempDir::new().unwrap();
+        let include = source_with(&[("vector", "// std header")]);
+        let cc = fake_compiler_with_includes(scripts.path(), include.path());
+
+        add_std(&store, Some(&cc)).unwrap();
+
+        assert!(store.is_registered(STD_ID));
+    }
+
+    #[test]
+    fn add_std_defaults_to_the_builtin_compiler() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        if crate::compiler::resolve(&Config::default().compiler).is_err() {
+            return; // 組み込み既定のコンパイラが無い環境ではスキップ
+        }
+
+        add_std(&store, None).unwrap();
+
+        assert!(store.is_registered(STD_ID));
     }
 
     #[test]
@@ -293,7 +325,7 @@ mod tests {
         update(&store, Some("lib"), Some(moved.path())).unwrap();
 
         let tags = Tags::load(&store.tags_json("lib").unwrap()).unwrap();
-        assert_eq!(tags.path, moved.path().canonicalize().unwrap());
+        assert_eq!(tags.path, dunce::canonicalize(moved.path()).unwrap());
         assert!(store.dummy_dir("lib").unwrap().join("b.hpp").is_file());
         assert!(!store.dummy_dir("lib").unwrap().join("a.hpp").is_file());
     }
@@ -319,6 +351,14 @@ mod tests {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
         assert!(update(&store, Some("lib"), None).is_err());
+    }
+
+    #[test]
+    fn update_all_with_no_libraries_is_a_no_op() {
+        // 全件更新は登録ゼロでもエラーにせず、案内だけ出して正常終了する。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        update(&store, None, None).unwrap();
     }
 
     #[test]
@@ -356,5 +396,33 @@ mod tests {
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
         assert!(show(&store, "lib", false).is_err());
+    }
+
+    #[test]
+    fn show_prints_the_std_registration() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        write_std_registration(&store, vec![PathBuf::from("/usr/bin/g++")]);
+
+        show(&store, STD_ID, false).unwrap();
+        show(&store, STD_ID, true).unwrap();
+    }
+
+    #[test]
+    fn show_verbose_lists_implementation_targets() {
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        // クラス外の修飾付き定義 (`fps::shrink`) から実装先 `fps` が抽出されるソースを登録する。
+        let source = source_with(&[("fps.hpp", "struct fps {};\nvoid fps::shrink() {}\n")]);
+        add(&store, "fps-lib", source.path()).unwrap();
+
+        // verbose 表示の Implements 分岐が空リストで素通りしないことを、前提ごと確かめる。
+        let tags = Tags::load(&store.tags_json("fps-lib").unwrap()).unwrap();
+        let TagsKind::Library { implements, .. } = &tags.kind else {
+            panic!("非 std ライブラリは Library を持つべき");
+        };
+        assert!(!implements.is_empty(), "実装先が抽出される前提のソース");
+
+        show(&store, "fps-lib", true).unwrap();
     }
 }

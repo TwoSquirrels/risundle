@@ -1,24 +1,26 @@
 //! 実ライブラリ E2E。submodule で取得した実際の競技プログラミングライブラリを登録し、それらを
-//! 使う小さなプログラムをバンドルして g++ でコンパイル・実行する。
+//! 使う小さなプログラムをバンドルして、テスト対象のコンパイラでコンパイル・実行する。
 //!
 //! コンパイルが通ることは「必要なヘッダーが削られていない」ことしか保証しない。余分なヘッダーが残っても
 //! `#pragma once` 等でコンパイルは通ってしまうからだ。そこで併せて、使ったデータ構造とは無関係な (だが
 //! ライブラリ内には実在する) シンボルがバンドルに混入していないことも確かめ、tree-shaking が実際に
 //! 効いていることを担保する。
 //!
-//! 前提: submodule が取得済みで g++ が利用可能であること (`git submodule update --init`)。
+//! 前提: submodule が取得済みで、テスト対象のコンパイラ (`RISUNDLE_TEST_COMPILER`、既定 g++) が
+//! 利用可能であること (`git submodule update --init`)。`<bits/stdc++.h>` に依存するライブラリの
+//! テストは、libc++ 環境 (macOS の Apple clang など) では自己スキップする。
 
 mod common;
 
 use std::path::Path;
 
 use assert_cmd::prelude::*;
-use common::{Sandbox, compile_and_run, fixture};
+use common::{Sandbox, compile_and_run, fixture, supports_bits_stdcxx};
 
 /// 維持指定する標準ライブラリ ID。
 const STD: &str = "std";
 
-/// バンドル結果。展開済みソースと、それを g++ でコンパイル・実行した標準出力を持つ。
+/// バンドル結果。展開済みソースと、それをテスト対象のコンパイラでコンパイル・実行した標準出力を持つ。
 struct Bundle {
     source: String,
     output: String,
@@ -55,7 +57,7 @@ fn bundle_with_library(lib_path: &Path, id: &str, source: &str) -> Bundle {
 
     sandbox.write("main.cpp", source);
     let output = sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "main.cpp"])
         .output()
         .expect("run bundle");
@@ -107,6 +109,11 @@ fn ac_library_keeps_only_the_structures_in_use() {
 
 #[test]
 fn nyaan_union_find_bundles_compiles_and_runs() {
+    // Nyaan's Library はヘッダー内部でも <bits/stdc++.h> を使うため、libstdc++ が前提。
+    if !supports_bits_stdcxx() {
+        eprintln!("skipped: テスト対象のコンパイラは <bits/stdc++.h> を提供しない");
+        return;
+    }
     let source = "#include <bits/stdc++.h>\nusing namespace std;\n\
         #include <data-structure/union-find.hpp>\n\
         int main() {\n\
@@ -122,6 +129,10 @@ fn nyaan_union_find_bundles_compiles_and_runs() {
 
 #[test]
 fn luzhiled_union_find_bundles_compiles_and_runs() {
+    if !supports_bits_stdcxx() {
+        eprintln!("skipped: テスト対象のコンパイラは <bits/stdc++.h> を提供しない");
+        return;
+    }
     let source = "#include <bits/stdc++.h>\nusing namespace std;\n\
         #include <structure/union-find/union-find.hpp>\n\
         int main() {\n\
@@ -137,6 +148,10 @@ fn luzhiled_union_find_bundles_compiles_and_runs() {
 
 #[test]
 fn kactl_union_find_bundles_compiles_and_runs() {
+    if !supports_bits_stdcxx() {
+        eprintln!("skipped: テスト対象のコンパイラは <bits/stdc++.h> を提供しない");
+        return;
+    }
     // KACTL のヘッダーは `vi` (= vector<int>) 等の typedef を利用側が用意する前提。
     let source = "#include <bits/stdc++.h>\nusing namespace std;\n\
         typedef vector<int> vi;\n\

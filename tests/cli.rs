@@ -210,7 +210,7 @@ fn used_and_unused_library() -> Sandbox {
 /// sandbox 内で `risundle <args> main.cpp` を実行し、標準出力を返す。
 fn run_bundle(sandbox: &Sandbox, args: &[&str]) -> String {
     let output = sandbox
-        .risundle()
+        .bundle_command()
         .args(args)
         .arg("main.cpp")
         .output()
@@ -407,7 +407,7 @@ fn bundle_passes_options_after_double_dash_to_compiler() {
 
     // -D が届かなければ #error でプリプロセスごと失敗するので、成功 = 受け渡しの証明。
     let output = sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "main.cpp", "--", "-DRISUNDLE_TEST_ANSWER=0"])
         .output()
         .expect("run bundle");
@@ -430,7 +430,7 @@ fn embed_includes_original_source_as_comment() {
     sandbox.write("main.cpp", main);
 
     sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "-e", "main.cpp"])
         .assert()
         .success()
@@ -442,7 +442,7 @@ fn embed_includes_original_source_as_comment() {
 fn bundle_fails_for_missing_input_file() {
     let sandbox = Sandbox::new();
     sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "ghost.cpp"])
         .assert()
         .failure();
@@ -466,7 +466,7 @@ fn bundle_detects_library_changes_unless_verification_is_bypassed() {
     sandbox.write("main.cpp", "int main() { return 0; }\n");
 
     sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "main.cpp"])
         .assert()
         .failure()
@@ -474,14 +474,14 @@ fn bundle_detects_library_changes_unless_verification_is_bypassed() {
 
     // --no-check ならハッシュ検証を飛ばして通る。
     sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "--no-check", "main.cpp"])
         .assert()
         .success();
 
     // --no-tree-shaking は識別子タグを使わないため、検証自体が不要になり通る。
     sandbox
-        .risundle()
+        .bundle_command()
         .args(["-k", STD, "--no-tree-shaking", "main.cpp"])
         .assert()
         .success();
