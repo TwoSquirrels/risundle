@@ -9,9 +9,17 @@ use anyhow::{Context, Result, bail};
 /// も自ら強制するので、呼び出し元の検証忘れがストア外の読み書き (最悪 `remove_dir_all`) に繋がる
 /// ことはない。受け口はフェイルファストな入力検証としてこれを直接使う。
 pub fn validate_id(id: &str) -> Result<()> {
-    if id.is_empty() || id == "." || id == ".." || id.contains('/') || id.contains('\\') {
+    // `:` は Windows のドライブ相対パス (`C:foo`) 対策。プレフィックス付きパスを join すると
+    // ベースパスが丸ごと置き換わるため、パス区切りと同様にストアの外へ抜けられてしまう。
+    if id.is_empty()
+        || id == "."
+        || id == ".."
+        || id.contains('/')
+        || id.contains('\\')
+        || id.contains(':')
+    {
         bail!(
-            "library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)"
+            "library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators or `:` are rejected)"
         );
     }
     Ok(())
@@ -136,7 +144,7 @@ mod tests {
     #[test]
     fn rejects_ids_that_escape_the_store() {
         let store = LocalStore::with_root("/tmp/local");
-        for bad in ["", ".", "..", "../evil", "a/b", "a\\b"] {
+        for bad in ["", ".", "..", "../evil", "a/b", "a\\b", "C:foo"] {
             assert!(store.library_dir(bad).is_err(), "{bad} を弾くべき");
             assert!(!store.is_registered(bad));
         }
