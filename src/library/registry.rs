@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::compiler;
+use crate::compiler::{self, system_includes};
 use crate::library::local::LocalStore;
 use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
 use crate::library::{dummy, hash, identifiers};
@@ -104,7 +104,7 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
 fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
     compilers
         .iter()
-        .map(|compiler| Ok((compiler.clone(), compiler::system_includes(compiler)?)))
+        .map(|compiler| Ok((compiler.clone(), system_includes(compiler)?)))
         .collect()
 }
 
