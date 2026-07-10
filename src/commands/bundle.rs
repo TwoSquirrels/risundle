@@ -20,20 +20,18 @@ use crate::bundle::inventory::Inventory;
 use crate::bundle::linemarker::{Line, Tracker};
 use crate::bundle::{detect, prune, rewrite};
 use crate::cli::BundleArgs;
-use crate::commands::{compiler, library as cmd_library};
+use crate::compiler;
 use crate::config;
 use crate::fs::relpath;
 use crate::library::local::LocalStore;
-
-/// `std` として扱うライブラリ ID。未登録なら警告する。
-const STD_ID: &str = "std";
+use crate::library::registry::{self, STD_ID};
 
 pub fn run(args: BundleArgs) -> Result<()> {
     let store = LocalStore::discover()?;
-    if let Err(err) = cmd_library::auto_setup_std(&store) {
+    if let Err(err) = registry::auto_setup_std(&store) {
         eprintln!("warning: failed to auto-register the standard library: {err:#}");
     }
-    cmd_library::auto_migrate(&store)?;
+    registry::auto_migrate(&store)?;
 
     let settings = Settings::resolve(&args)?;
     let inventory = Inventory::load(&store, &settings.keep)?;

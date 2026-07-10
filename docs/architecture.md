@@ -13,14 +13,16 @@ src/
   main.rs            配線・argv 振り分け
   cli.rs             clap 定義
   config.rs          .risundlerc.toml の読み取り
-  commands/          サブコマンドのハンドラ (library.rs / bundle.rs)
+  commands/          サブコマンドの受け口 (library.rs / bundle.rs)
   library/           登録済みライブラリのドメイン
+    registry.rs      登録の実処理 (登録・再登録・自動セットアップ・自動移行)
     tags.rs          tags.json のデータと永続化
     local.rs         $LOCAL 上の配置 (LocalStore)
     hash.rs          内容ベースの集約ハッシュ
     dummy.rs         維持ライブラリのダミー生成
     identifiers.rs   tree-sitter による識別子抽出
   fs/                汎用ファイル走査 (walk / source / relpath)
+  compiler.rs        コンパイラへの問い合わせ (絶対パス解決・システム include パス検出)
   bundle/            tree-shaking の純粋ロジック (コンパイラ起動・IO は commands/bundle.rs)
     inventory.rs     登録ライブラリの突き合わせ (-I 組立・逆引き・分類・ハッシュ検証)
     linemarker.rs    プリプロセス出力の linemarker 解析と行の出所追跡
@@ -29,24 +31,49 @@ src/
     rewrite.rs       不要行の削除とダミー pragma の #include 復元
 ```
 
-依存は `commands → bundle → library → fs` の内向き一方向で、循環しない。
+依存は内向き一方向で、循環しない。矢印は「依存してよい相手」で、ここに無い依存は持たない (`fs` と `compiler` は何にも依存しない終端):
+
+```mermaid
+graph LR
+  main --> commands
+  commands --> bundle
+  commands --> library
+  commands --> compiler
+  commands --> fs
+  bundle --> library
+  bundle --> fs
+  library --> fs
+  library --> compiler
+```
+
+各モジュールの役割と、そこに置く理由は次のとおり。
 
 - `fs` は何にも依存しない走査ユーティリティで、`library` と `bundle` が共有する。
-- `library` は走査を `fs` に委ね、登録済みライブラリの表現・永続化・登録処理を担う。
+- `compiler` も同じ立ち位置の共有の道具。コンパイラへの問い合わせは登録 (システム include パスの検出) とバンドル (警告時の照合) のどちらにも属さないので、`library` に埋めず `fs` と並べる。
+- `library` は走査を `fs` に、コンパイラへの問い合わせを `compiler` に委ね、登録済みライブラリの表現・永続化・登録処理 (`registry`) を担う。
 - `bundle` は `library` の tags.json を逆引きに使うため `library` に依存する。
 - `identifiers` ・ `dummy` は登録専用なので `library` 内に置く。`bundle` は使わない。
+
+## IO の置き場所は処理の性質で決める
+
+副作用のない計算は入出力を受け口 (`commands/`) へ追い出し、副作用が目的の処理は入出力ごとドメインが抱える。
+
+- バンドルは、入力の文字列から出力の文字列を作る計算が核。だからコンパイラ起動や標準出力は `commands/bundle.rs` に任せ、`bundle/` を純粋な関数として保つ。テストも理解もしやすくなる。
+- ライブラリの登録は、ダミーのファイル群を作り tags.json を書くという、副作用そのものが目的の処理。守るべき純粋な核が無いので、入出力ごと `library/registry.rs` が担う。
+
+両者で置き場所が違うのはちぐはぐではなく、処理の性質に合わせた使い分け。画面表示は、時間のかかる処理の途中経過 (標準エラー) を実処理の側が出し、ユーザーへの最終結果 (標準出力) を受け口が出す、と分担する。
 
 ## std は単一 dir ではなく、コンパイラの全システム include パス
 
 標準ライブラリのヘッダーは 1 ディレクトリに収まらない。C++ 標準 (`/usr/include/c++/14`) のほか、コンパイラ組み込み (`immintrin.h` 等)・アーキ依存 (`bits/stdc++.h` 等)・C ライブラリに分散する。バンドルは `-nostdinc` でこれら全てを探索対象から外しダミーへ倒すため、ダミー集合が 1 dir 分しか無いと、そこに住まない直接 include (`immintrin.h` / `bits/stdc++.h`) が解決できず壊れる。
 
-そこで `add-std` はコンパイラを起動して `-v` の探索パス一覧を取得し、全 dir を 1 つのダミーツリーへ集約する (相対パス衝突は復元 `#include` が同一になるので無害)。コンパイラ起動という IO はハンドラ (`commands/library.rs`) が担い、検出した dir 列を純粋な書き込み処理へ渡す。`std` だけ登録手順が他と異なるため、汎用 `add` から分けて専用コマンドにしている。
+そこで `add-std` はコンパイラを起動して `-v` の探索パス一覧を取得し (`compiler::system_includes`)、全 dir を 1 つのダミーツリーへ集約する (相対パス衝突は復元 `#include` が同一になるので無害)。`std` だけ登録手順が他と異なるため、汎用 `add` から分けて専用コマンドにしている。
 
 ## std はコンパイラ単体ではなく「認識集合」を持つ
 
 「ツールが唯一の現在コンパイラをグローバルに握る」のは避ける。コンパイラはプロジェクト単位 (`.risundlerc.toml` / `--compiler`) で変わりうる環境側の関心事だからだ。代わりに std は **認識しているコンパイラの集合** (`compilers`) を持ち、`add-std` を繰り返すと集合へ加算し、集合全コンパイラのシステム include を 1 つのダミーツリーへ統合する。和集合がどのコンパイラのヘッダーもカバーするので、どれでバンドルしても解決でき背反が起きない。
 
-照合の表記揺れを避けるため、コンパイラは登録時もバンドル時も同じ規則で実体の絶対パスへ正規化する (`g++` も `/usr/bin/g++` も同一に収束)。この正規化は両ハンドラが共有するので `commands/compiler.rs` に切り出した。バンドル時は対象コンパイラが認識集合に無ければ警告し (フェイルファスト)、`add-std <それ>` を促す。検証は集合への所属チェックだけで、強制はしない (未登録コンパイラでのバンドルはコンパイル時に明示エラーになる)。
+照合の表記揺れを避けるため、コンパイラは登録時もバンドル時も同じ規則で実体の絶対パスへ正規化する (`g++` も `/usr/bin/g++` も同一に収束)。この正規化は登録とバンドルが共有するので `compiler.rs` (`compiler::resolve`) に置く。バンドル時は対象コンパイラが認識集合に無ければ警告し (フェイルファスト)、`add-std <それ>` を促す。検証は集合への所属チェックだけで、強制はしない (未登録コンパイラでのバンドルはコンパイル時に明示エラーになる)。
 
 ## 規模に合わせて、あえてやらないこと
 
