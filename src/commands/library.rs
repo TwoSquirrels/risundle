@@ -45,9 +45,7 @@ fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
 /// コンパイラ省略時は組み込みデフォルトを要求として渡す。デフォルトの決定は設定 (環境側の関心事)
 /// なので受け口が担い、認識集合の育て方は registry に任せる。
 fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
-    let requested = compiler
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| Config::default().compiler);
+    let requested = compiler.map_or_else(|| Config::default().compiler, Path::to_path_buf);
     let count = registry::add_std(store, &requested)?;
 
     println!("registered the standard library (`{STD_ID}`) for {count} compiler(s)");
@@ -72,6 +70,11 @@ fn delete(store: &LocalStore, id: &str) -> Result<()> {
 
 /// `id` 省略時は登録済みの全ライブラリを更新する。`path` を伴う省略は clap の positional 順序上
 /// 起こり得ない (`path` は `id` の後ろにしか来ない)。
+// 単発更新と全件更新は同じ重みを持つ枝なので、else に押し込めるより match の対称性を保つ方が読みやすい。
+#[expect(
+    clippy::single_match_else,
+    reason = "両アームが同格の分岐であり if let/else より match が読みやすい"
+)]
 fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<()> {
     match id {
         Some(id) => update_one(store, id, path),
@@ -125,7 +128,10 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
     match Tags::load(&store.tags_json(id)?) {
-        Ok(tags) => show_tags(id, &tags, verbose),
+        Ok(tags) => {
+            show_tags(id, &tags, verbose);
+            Ok(())
+        }
         // 詳細 (定義識別子・ハッシュ) は現行スキーマでないと読めない。読み取りコマンドが状態を
         // 書き換えるのは避けたいので、自動移行はせず、読める基本情報だけ出して update を案内する。
         Err(err) => match err.downcast_ref::<SchemaMismatch>() {
@@ -145,7 +151,7 @@ fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
     Ok(())
 }
 
-fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
+fn show_tags(id: &str, tags: &Tags, verbose: bool) {
     show_field("ID", id);
     show_field("Path", &tags.path.display().to_string());
     match &tags.kind {
@@ -181,7 +187,6 @@ fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
             }
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

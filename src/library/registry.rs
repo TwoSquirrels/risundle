@@ -124,8 +124,7 @@ fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
 fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> Result<()> {
     let primary = discovered
         .iter()
-        .flat_map(|(_, roots)| roots.first())
-        .next()
+        .find_map(|(_, roots)| roots.first())
         .cloned()
         .context("the system include paths are empty")?;
     recreate_library_dir(store, STD_ID)?;
@@ -171,7 +170,7 @@ pub fn resolve_source_root(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to resolve include path {}", path.display()))
 }
 
-/// バンドル前に呼ぶ。schema_version が現行と合わない登録を、ライブラリ実体から黙って作り直す。
+/// バンドル前に呼ぶ。`schema_version` が現行と合わない登録を、ライブラリ実体から黙って作り直す。
 ///
 /// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
 /// なので、ユーザーに `update` を要求せず自動で回復する (`std` の初回自動登録と同じ発想)。
@@ -193,6 +192,11 @@ pub fn auto_migrate(store: &LocalStore) -> Result<()> {
 ///
 /// [`Registration`] はスキーマ検証をせず読むため、旧スキーマの登録からでも回復できる。std は
 /// コンパイラ集合を、通常ライブラリは登録パス (または明示された `path`) を種にして作り直す。
+// std と通常ライブラリで作り直し方が根本的に異なり、どちらも同じ重みの分岐なので match の対称性を保つ。
+#[expect(
+    clippy::single_match_else,
+    reason = "両アームが同格の分岐であり if let/else より match が読みやすい"
+)]
 pub fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     let reg = Registration::load(&store.tags_json(id)?)?;
     match reg.compilers {

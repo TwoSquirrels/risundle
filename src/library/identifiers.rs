@@ -46,6 +46,7 @@ const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier
 
 /// [`enumerate`] の結果。どちらもキーは `source_root` からの相対パス (`/` 区切り)、値は重複排除・
 /// 昇順の名前一覧で、該当する名前を持たないファイルはキー自体を含めない。
+#[derive(Debug)]
 pub struct Enumeration {
     /// 各ファイルが定義する識別子名 (tags.json の `files`)。
     pub definitions: BTreeMap<String, Vec<String>>,
@@ -108,7 +109,7 @@ fn names_in_file(parser: &mut Parser, source: &[u8]) -> Result<(Vec<String>, Vec
 /// 逆引きを汚すため辿らない。`type` フィールド内に書かれた埋め込み型定義 (`struct X {} v;`) は、
 /// 全子ノードの再帰訪問で当該 `struct` ノードに到達し、その `name` から拾える。
 fn collect_definitions(
-    node: Node,
+    node: Node<'_>,
     source: &[u8],
     names: &mut BTreeSet<String>,
     implements: &mut BTreeSet<String>,
@@ -133,7 +134,7 @@ fn collect_definitions(
 /// 同名フィールドを辿り続けて末端へ到達する。`qualified_identifier` は `name` 側のみ辿るため、
 /// `Foo::bar` からは `bar` を得る (逆引きはトークン単位で行うため修飾子は不要)。
 fn collect_leaf(
-    node: Node,
+    node: Node<'_>,
     source: &[u8],
     names: &mut BTreeSet<String>,
     implements: &mut BTreeSet<String>,
@@ -183,7 +184,7 @@ fn collect_leaf(
 /// 実装先の型名ノードから、その基底の名前を採用する。`FormalPowerSeries<mint>` のような
 /// テンプレート実引数付きはテンプレート名だけを取り、実引数には降りない (実引数は参照であって
 /// 実装先ではない)。
-fn collect_implement_target(node: Node, source: &[u8], implements: &mut BTreeSet<String>) {
+fn collect_implement_target(node: Node<'_>, source: &[u8], implements: &mut BTreeSet<String>) {
     match node.kind() {
         "namespace_identifier" | "identifier" | "type_identifier" => {
             if let Ok(text) = node.utf8_text(source) {

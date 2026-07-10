@@ -18,9 +18,9 @@ fn main() -> anyhow::Result<()> {
     // 先頭引数が `library` のときだけ管理用パーサへ、それ以外は全てバンドル実行へ振り分ける。
     if argv.get(1).is_some_and(|arg| arg == "library") {
         // 先頭 2 要素 (コマンド名と `library`) を、usage 表示用の `risundle library` に差し替える。
-        let args =
+        let library_argv =
             std::iter::once(OsString::from("risundle library")).chain(argv.into_iter().skip(2));
-        commands::library::run(LibraryCli::parse_from(args).command)
+        commands::library::run(LibraryCli::parse_from(library_argv).command)
     } else {
         commands::bundle::run(BundleArgs::parse_from(argv))
     }

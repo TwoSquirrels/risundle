@@ -2,6 +2,7 @@
 //! 計算し、ライブラリの更新検知に使う。mtime でなく内容ベースのため `git clone`/`cp` での時刻変化に
 //! 左右されず、相対パスも含めるためファイルの追加・削除・リネームも検知できる。
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::Result;
@@ -28,11 +29,14 @@ pub fn aggregate(root: &Path) -> Result<String> {
         hasher.update(&content);
     }
 
-    let hex: String = hasher
+    // sha256 のダイジェストは 32 バイト = 16 進 64 文字で固定。
+    let hex = hasher
         .finalize()
         .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+        .fold(String::with_capacity(64), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        });
     Ok(format!("sha256:{hex}"))
 }
 

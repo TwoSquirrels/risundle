@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
 
-/// `tags.json` の schema_version が現行と異なることを表すエラー。
+/// `tags.json` の `schema_version` が現行と異なることを表すエラー。
 ///
 /// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
 /// なので、呼び出し側はこのエラーを検知したら自動再登録で回復してよい (バンドル前の自動移行や
@@ -88,6 +88,7 @@ impl Tags {
 /// これらは全スキーマバージョンに共通して存在するため、[`Tags`] が読めない (スキーマ不一致の) 登録
 /// からでも取り出せる。登録の作り直し・種別とパスの表示 (`update`・`add-std`・バンドル時の自動移行・
 /// `list`・`show` の寛容表示) は、この中核だけで足りる。
+#[derive(Debug)]
 pub struct Registration {
     pub path: PathBuf,
     /// `std` の登録なら `Some` (認識コンパイラ集合)、通常ライブラリなら `None`。

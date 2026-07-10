@@ -33,21 +33,32 @@ pub fn run(args: BundleArgs) -> Result<()> {
     }
     registry::auto_migrate(&store)?;
 
-    let settings = Settings::resolve(&args)?;
+    // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Settings::resolve へ
+    // 所有権ごと渡し、設定とのマージで clone せずに済ませる。
+    let BundleArgs {
+        compiler,
+        keep,
+        embed,
+        no_check,
+        no_tree_shaking,
+        file,
+        options,
+    } = args;
+
+    let settings = Settings::resolve(&file, compiler, options, keep, embed)?;
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
-    if !args.no_check && !args.no_tree_shaking {
+    if !no_check && !no_tree_shaking {
         inventory.verify()?;
     }
 
     let compiler_args = compiler_args(&settings, &inventory);
-    let preprocessed = preprocess(&settings.compiler, &compiler_args, &args.file)?;
+    let preprocessed = preprocess(&settings.compiler, &compiler_args, &file)?;
 
-    let target = args
-        .file
+    let target = file
         .canonicalize()
-        .with_context(|| format!("failed to resolve {}", args.file.display()))?;
-    let unused = if args.no_tree_shaking {
+        .with_context(|| format!("failed to resolve {}", file.display()))?;
+    let unused = if no_tree_shaking {
         BTreeSet::new()
     } else {
         unused_origins(
@@ -65,7 +76,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
         |origin| display_origin(origin, &inventory, target_dir),
     );
 
-    print!("{}", assemble_output(&args, &settings, &bundled)?);
+    print!("{}", assemble_output(&file, &settings, &bundled)?);
     Ok(())
 }
 
@@ -87,10 +98,10 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
     {
         return relative;
     }
-    canonical
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| origin.to_owned())
+    canonical.file_name().map_or_else(
+        || origin.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 /// std がバンドル対象のコンパイラ向けに登録されているかを確認し、外れていれば警告する。
@@ -127,21 +138,29 @@ struct Settings {
 }
 
 impl Settings {
-    fn resolve(args: &BundleArgs) -> Result<Self> {
-        let config = config::resolve(&args.file)?;
+    /// CLI で明示された値 (`compiler`・`options`・`keep`・`embed`) を消費して設定と重ね合わせる。
+    /// `file` は設定ファイルの探索起点として借用するだけで、呼び出し側が引き続き所有する。
+    fn resolve(
+        file: &Path,
+        compiler: Option<PathBuf>,
+        options: Vec<String>,
+        keep: Vec<String>,
+        embed: bool,
+    ) -> Result<Self> {
+        let config = config::resolve(file)?;
         Ok(Self {
-            compiler: args.compiler.clone().unwrap_or(config.compiler),
-            options: if args.options.is_empty() {
+            compiler: compiler.unwrap_or(config.compiler),
+            options: if options.is_empty() {
                 config.options
             } else {
-                args.options.clone()
+                options
             },
-            keep: if args.keep.is_empty() {
+            keep: if keep.is_empty() {
                 config.keep.into_iter().collect()
             } else {
-                args.keep.iter().cloned().collect()
+                keep.into_iter().collect()
             },
-            embed: args.embed || config.embed,
+            embed: embed || config.embed,
         })
     }
 }
@@ -244,11 +263,11 @@ fn needed_headers(
 }
 
 /// クレジットと (任意で) オリジナルコードの埋め込みを先頭に付け、バンドル結果を組み立てる。
-fn assemble_output(args: &BundleArgs, settings: &Settings, bundled: &str) -> Result<String> {
+fn assemble_output(file: &Path, settings: &Settings, bundled: &str) -> Result<String> {
     let mut output = format!("// Bundled with risundle v{}\n", env!("CARGO_PKG_VERSION"));
     if settings.embed {
-        let original = std::fs::read_to_string(&args.file)
-            .with_context(|| format!("failed to read {}", args.file.display()))?;
+        let original = std::fs::read_to_string(file)
+            .with_context(|| format!("failed to read {}", file.display()))?;
         output.push_str("//\n// --- original source ---\n");
         for line in original.lines() {
             output.push_str("// ");

@@ -16,6 +16,7 @@ use crate::library::local::LocalStore;
 use crate::library::registry::STD_ID;
 use crate::library::tags::{Tags, TagsKind};
 
+#[derive(Debug)]
 struct Library {
     id: String,
     /// 登録時に保存された絶対パス (realpath 済み)。`-I` と逆引き・分類の基準。
@@ -32,6 +33,7 @@ struct FileTags<'a> {
     implements: &'a [String],
 }
 
+#[derive(Debug)]
 pub struct Inventory {
     libraries: Vec<Library>,
 }
@@ -266,7 +268,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
@@ -296,7 +298,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
 
@@ -432,7 +434,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
