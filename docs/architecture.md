@@ -39,6 +39,7 @@ graph LR
   commands --> bundle
   commands --> library
   commands --> compiler
+  commands --> fs
   bundle --> library
   bundle --> fs
   library --> fs
