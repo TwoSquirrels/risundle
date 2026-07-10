@@ -22,3 +22,18 @@ pub fn to_slash(relative: &Path) -> Result<String> {
     }
     Ok(parts.join("/"))
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_utf8_names() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        use std::path::Path;
+
+        // 非 UTF-8 のファイル名は #include パスにも tags.json のキーにもなれないため弾く。
+        let relative = Path::new(OsStr::from_bytes(b"lib/\xff.hpp"));
+        assert!(super::to_slash(relative).is_err());
+    }
+}

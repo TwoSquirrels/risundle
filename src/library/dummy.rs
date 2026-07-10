@@ -53,6 +53,19 @@ mod tests {
     }
 
     #[test]
+    fn reports_failure_when_the_dummy_parent_cannot_be_created() {
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("source");
+        write_file(&source, "sub/a.hpp", "int a;");
+        let dummy = temp.path().join("dummy");
+        fs::create_dir_all(&dummy).unwrap();
+        // 親ディレクトリになるべき位置に既にファイルがあると、ダミーの書き出しに失敗する。
+        fs::write(dummy.join("sub"), "").unwrap();
+
+        assert!(generate(&source, &dummy).is_err());
+    }
+
+    #[test]
     fn mirrors_directory_structure_into_dummy_root() {
         let temp = TempDir::new().unwrap();
         let source = temp.path().join("source");

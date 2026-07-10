@@ -170,4 +170,38 @@ mod tests {
         assert!(store.is_registered("std"));
         assert!(!store.is_registered("incomplete"));
     }
+
+    #[test]
+    fn library_ids_reports_an_unreadable_libraries_dir() {
+        // NotFound (未作成 = 登録ゼロ) 以外の読み取りエラーは握り潰さず文脈付きで返す。
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        fs::write(store.libraries_dir(), "").unwrap(); // ディレクトリの位置にファイル
+
+        assert!(store.library_ids().is_err());
+    }
+
+    #[test]
+    fn library_ids_skips_stray_files() {
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        register(&store, "lib");
+        fs::write(store.libraries_dir().join("README.txt"), "").unwrap();
+
+        assert_eq!(store.library_ids().unwrap(), vec!["lib"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn library_ids_skips_non_utf8_names() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp = TempDir::new().unwrap();
+        let store = LocalStore::with_root(temp.path());
+        register(&store, "lib");
+        fs::create_dir_all(store.libraries_dir().join(OsStr::from_bytes(b"\xff"))).unwrap();
+
+        assert_eq!(store.library_ids().unwrap(), vec!["lib"]);
+    }
 }

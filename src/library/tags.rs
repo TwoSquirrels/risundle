@@ -203,6 +203,21 @@ mod tests {
 
     use tempfile::TempDir;
 
+    #[test]
+    fn kind_label_distinguishes_std_and_library() {
+        let std_reg = Registration {
+            path: PathBuf::from("/usr/include"),
+            compilers: Some(vec![PathBuf::from("/usr/bin/g++")]),
+        };
+        assert_eq!(std_reg.kind_label(), "std");
+
+        let library_reg = Registration {
+            path: PathBuf::from("/home/user/lib"),
+            compilers: None,
+        };
+        assert_eq!(library_reg.kind_label(), "library");
+    }
+
     fn library_tags() -> Tags {
         Tags {
             path: PathBuf::from("/usr/local/include"),
