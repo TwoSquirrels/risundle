@@ -100,6 +100,25 @@ fn parse_search_dirs(verbose_output: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// テスト用の偽コンパイラ生成。コンパイラ起動を伴う処理を、実コンパイラ無しで決定的にテスト
+/// するための共有補助。依存を内向きに保つため終端の本モジュールが持ち、`library` 側のテスト補助
+/// ([`crate::library::testutil`]) はこれを再輸出して使う。
+#[cfg(test)]
+pub mod testutil {
+    #[cfg(unix)]
+    use std::path::{Path, PathBuf};
+
+    /// 実行可能な偽コンパイラスクリプトを作る。`-v` の出力や終了コードを自由に偽装できる。
+    #[cfg(unix)]
+    pub fn fake_compiler(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("fake-cc");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +126,9 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
+
+    #[cfg(unix)]
+    use super::testutil::fake_compiler;
 
     #[test]
     fn resolves_path_with_separator_to_absolute() {
@@ -171,5 +193,69 @@ mod tests {
         // symlink (/tmp→/private/tmp) で表記が分岐するため、関数と同じ正規化を通して比較する。
         let dirs = parse_search_dirs(verbose);
         assert_eq!(dirs, vec![Path::new(".").canonicalize().unwrap()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_includes_parses_the_verbose_search_list() {
+        let temp = TempDir::new().unwrap();
+        let include_dir = temp.path().join("include");
+        fs::create_dir(&include_dir).unwrap();
+        let cc = fake_compiler(
+            temp.path(),
+            &format!(
+                "echo '#include <...> search starts here:' >&2\n\
+                 echo ' {}' >&2\n\
+                 echo 'End of search list.' >&2",
+                include_dir.display()
+            ),
+        );
+
+        assert_eq!(
+            system_includes(&cc).unwrap(),
+            vec![include_dir.canonicalize().unwrap()]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_includes_reports_compiler_failure_with_its_stderr() {
+        let temp = TempDir::new().unwrap();
+        let cc = fake_compiler(temp.path(), "echo 'unsupported option' >&2\nexit 1");
+
+        let err = system_includes(&cc).unwrap_err().to_string();
+        assert!(
+            err.contains("failed to detect the system include paths"),
+            "{err}"
+        );
+        assert!(
+            err.contains("unsupported option"),
+            "原因特定のためコンパイラの標準エラーを含めるべき: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_includes_requires_a_nonempty_search_list() {
+        // 正常終了しても探索リストが空なら、後段で壊れる前にここで失敗する (フェイルファスト)。
+        let temp = TempDir::new().unwrap();
+        let cc = fake_compiler(
+            temp.path(),
+            "echo '#include <...> search starts here:' >&2\necho 'End of search list.' >&2",
+        );
+
+        let err = system_includes(&cc).unwrap_err().to_string();
+        assert!(
+            err.contains("could not detect any system include paths"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn system_includes_reports_launch_failure() {
+        // ディレクトリは実行できないため、プロセス起動自体が OS エラーになる経路を通す。
+        let temp = TempDir::new().unwrap();
+        let err = system_includes(temp.path()).unwrap_err().to_string();
+        assert!(err.contains("failed to launch compiler"), "{err}");
     }
 }
