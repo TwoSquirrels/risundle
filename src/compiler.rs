@@ -27,10 +27,8 @@ pub fn resolve(compiler: &Path) -> Result<PathBuf> {
                 compiler.display()
             )
         })?;
-        if !absolute.is_file() {
-            bail!("compiler {} not found", compiler.display());
-        }
-        absolute
+        existing_executable(absolute)
+            .ok_or_else(|| anyhow!("compiler {} not found", compiler.display()))?
     } else {
         let path_var = std::env::var_os("PATH").unwrap_or_default();
         find_in_path(compiler, &path_var)
@@ -47,9 +45,23 @@ pub fn resolve(compiler: &Path) -> Result<PathBuf> {
 
 /// `PATH` の各ディレクトリから `name` の実行ファイルを探し、最初に見つかったパスを返す。
 fn find_in_path(name: &Path, path_var: &OsStr) -> Option<PathBuf> {
-    std::env::split_paths(path_var)
-        .map(|dir| dir.join(name))
-        .find(|candidate| candidate.is_file())
+    std::env::split_paths(path_var).find_map(|dir| existing_executable(dir.join(name)))
+}
+
+/// `candidate` に実在する実行ファイルを返す。Windows では実体が `g++.exe` なので、拡張子なしの
+/// 指定に `.exe` を補った形も探す (`Command` がプロセス起動時に行う補完と同じ規則に揃える)。
+fn existing_executable(candidate: PathBuf) -> Option<PathBuf> {
+    if candidate.is_file() {
+        return Some(candidate);
+    }
+    #[cfg(windows)]
+    if candidate.extension().is_none() {
+        let with_exe = candidate.with_extension("exe");
+        if with_exe.is_file() {
+            return Some(with_exe);
+        }
+    }
+    None
 }
 
 /// コンパイラのシステム include パス一覧を検出する。
@@ -177,6 +189,17 @@ mod tests {
             find_in_path(Path::new("nonexistent-cc"), temp.path().as_os_str()),
             None
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn finds_bare_name_with_exe_extension_on_windows() {
+        // PATH 上の実体は `g++.exe` のように拡張子付き。拡張子なしの指定でも見つかるべき。
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("mycc.exe"), "").unwrap();
+
+        let found = find_in_path(Path::new("mycc"), temp.path().as_os_str());
+        assert_eq!(found, Some(temp.path().join("mycc.exe")));
     }
 
     #[test]
