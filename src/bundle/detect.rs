@@ -43,7 +43,7 @@ enum Token {
 }
 
 /// 行コメントを行末まで読み飛ばす。終端の改行は残し (空白として無害)、次トークンから再開する。
-fn skip_line_comment(lexer: &mut Lexer<Token>) -> Skip {
+fn skip_line_comment(lexer: &mut Lexer<'_, Token>) -> Skip {
     let rest = lexer.remainder();
     lexer.bump(rest.find('\n').unwrap_or(rest.len()));
     Skip
@@ -51,7 +51,7 @@ fn skip_line_comment(lexer: &mut Lexer<Token>) -> Skip {
 
 /// ブロックコメントを `*/` まで読み飛ばす。logos の正規表現は非貪欲な終端を表しにくいため、
 /// 残り文字列から終端を探すコールバックで処理する。終端が無ければ残り全体をコメント扱いにする。
-fn skip_block_comment(lexer: &mut Lexer<Token>) -> Skip {
+fn skip_block_comment(lexer: &mut Lexer<'_, Token>) -> Skip {
     let rest = lexer.remainder();
     match rest.find("*/") {
         Some(end) => lexer.bump(end + 2),
