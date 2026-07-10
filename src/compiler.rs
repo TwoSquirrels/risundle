@@ -130,6 +130,34 @@ pub mod testutil {
         let path = dir.join("fake-cc");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // 書いた直後のスクリプトは、起動がまれに ETXTBSY (Text file busy) で失敗する: 並列テストの
+        // 別スレッドが書き込み中に fork すると、複製された書き込み fd が子プロセスの exec まで
+        // 生き残るため (Linux の既知の競合)。そこで、起動できることを空実行で確かめてから返す。
+        // 一度起動できたなら書き込み fd はもう残っていないので、呼び出し側は安全に起動できる。
+        // ETXTBSY 以外の失敗は原因が別 (権限や形式の問題) なので、後段の分かりにくい失敗に
+        // 化けないようここで即座に落とす。
+        let mut busy_attempts = 0;
+        loop {
+            let probe = std::process::Command::new(&path)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            match probe {
+                Ok(_) => break,
+                Err(err) if err.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    busy_attempts += 1;
+                    assert!(
+                        busy_attempts < 100,
+                        "偽コンパイラ {} が ETXTBSY のまま起動可能にならない",
+                        path.display()
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(err) => panic!("偽コンパイラ {} の起動確認に失敗: {err}", path.display()),
+            }
+        }
         path
     }
 }
