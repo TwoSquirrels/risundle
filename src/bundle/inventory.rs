@@ -266,7 +266,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
@@ -296,7 +296,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
 
@@ -432,7 +432,7 @@ mod tests {
             &store,
             "std",
             TagsKind::Std {
-                compilers: vec![std::path::PathBuf::from("/usr/bin/g++")],
+                compilers: vec![PathBuf::from("/usr/bin/g++")],
             },
         );
         let acl_path = register(&store, "ac-library", library_kind(&[]));
