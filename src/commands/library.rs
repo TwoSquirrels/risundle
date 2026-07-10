@@ -123,7 +123,10 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
     match Tags::load(&store.tags_json(id)?) {
-        Ok(tags) => show_tags(id, &tags, verbose),
+        Ok(tags) => {
+            show_tags(id, &tags, verbose);
+            Ok(())
+        }
         // 詳細 (定義識別子・ハッシュ) は現行スキーマでないと読めない。読み取りコマンドが状態を
         // 書き換えるのは避けたいので、自動移行はせず、読める基本情報だけ出して update を案内する。
         Err(err) => match err.downcast_ref::<SchemaMismatch>() {
@@ -143,7 +146,7 @@ fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
     Ok(())
 }
 
-fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
+fn show_tags(id: &str, tags: &Tags, verbose: bool) {
     show_field("ID", id);
     show_field("Path", &tags.path.display().to_string());
     match &tags.kind {
@@ -179,7 +182,6 @@ fn show_tags(id: &str, tags: &Tags, verbose: bool) -> Result<()> {
             }
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
