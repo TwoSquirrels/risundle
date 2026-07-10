@@ -124,8 +124,7 @@ fn discover_all(compilers: &[PathBuf]) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
 fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> Result<()> {
     let primary = discovered
         .iter()
-        .flat_map(|(_, roots)| roots.first())
-        .next()
+        .find_map(|(_, roots)| roots.first())
         .cloned()
         .context("the system include paths are empty")?;
     recreate_library_dir(store, STD_ID)?;

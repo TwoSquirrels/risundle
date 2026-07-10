@@ -87,10 +87,10 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
     {
         return relative;
     }
-    canonical
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| origin.to_owned())
+    canonical.file_name().map_or_else(
+        || origin.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 /// std がバンドル対象のコンパイラ向けに登録されているかを確認し、外れていれば警告する。

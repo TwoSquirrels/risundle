@@ -45,9 +45,7 @@ fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
 /// コンパイラ省略時は組み込みデフォルトを要求として渡す。デフォルトの決定は設定 (環境側の関心事)
 /// なので受け口が担い、認識集合の育て方は registry に任せる。
 fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
-    let requested = compiler
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| Config::default().compiler);
+    let requested = compiler.map_or_else(|| Config::default().compiler, Path::to_path_buf);
     let count = registry::add_std(store, &requested)?;
 
     println!("registered the standard library (`{STD_ID}`) for {count} compiler(s)");
