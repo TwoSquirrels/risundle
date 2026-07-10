@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
 use crate::cli::LibraryCommand;
 use crate::config::Config;
@@ -77,9 +77,7 @@ fn ensure_registered(store: &LocalStore, id: &str) -> Result<()> {
 fn delete(store: &LocalStore, id: &str) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    let library_dir = store.library_dir(id);
-    std::fs::remove_dir_all(&library_dir)
-        .with_context(|| format!("failed to remove {}", library_dir.display()))?;
+    registry::remove(store, id)?;
 
     println!("removed registration of library `{id}`");
     Ok(())

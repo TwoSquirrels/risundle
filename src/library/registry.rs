@@ -143,11 +143,17 @@ fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> R
     .save(&store.tags_json(STD_ID))
 }
 
+/// ライブラリの登録 (`$LOCAL/libraries/<id>` 一式) を削除する。
+pub fn remove(store: &LocalStore, id: &str) -> Result<()> {
+    let library_dir = store.library_dir(id);
+    std::fs::remove_dir_all(&library_dir)
+        .with_context(|| format!("failed to remove {}", library_dir.display()))
+}
+
 fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
     let library_dir = store.library_dir(id);
     if library_dir.exists() {
-        std::fs::remove_dir_all(&library_dir)
-            .with_context(|| format!("failed to remove {}", library_dir.display()))?;
+        remove(store, id)?;
     }
     std::fs::create_dir_all(&library_dir)
         .with_context(|| format!("failed to create {}", library_dir.display()))
