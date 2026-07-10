@@ -171,7 +171,7 @@ pub fn resolve_source_root(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to resolve include path {}", path.display()))
 }
 
-/// バンドル前に呼ぶ。schema_version が現行と合わない登録を、ライブラリ実体から黙って作り直す。
+/// バンドル前に呼ぶ。`schema_version` が現行と合わない登録を、ライブラリ実体から黙って作り直す。
 ///
 /// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
 /// なので、ユーザーに `update` を要求せず自動で回復する (`std` の初回自動登録と同じ発想)。

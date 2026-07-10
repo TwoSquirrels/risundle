@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
 
-/// `tags.json` の schema_version が現行と異なることを表すエラー。
+/// `tags.json` の `schema_version` が現行と異なることを表すエラー。
 ///
 /// tags.json はライブラリ実体から再生成できるキャッシュであり、形式の不一致は risundle 側の都合
 /// なので、呼び出し側はこのエラーを検知したら自動再登録で回復してよい (バンドル前の自動移行や
