@@ -24,7 +24,7 @@ pub fn store_in(local: &TempDir) -> LocalStore {
 
 /// 登録済みライブラリの tags.json を、現行と異なる schema_version に書き換える (移行の検証用)。
 pub fn downgrade_schema(store: &LocalStore, id: &str) {
-    let tags_path = store.tags_json(id);
+    let tags_path = store.tags_json(id).unwrap();
     let old = fs::read_to_string(&tags_path)
         .unwrap()
         .replace("\"schema_version\": 2", "\"schema_version\": 1");

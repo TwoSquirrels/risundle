@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 
 use crate::cli::LibraryCommand;
 use crate::config::Config;
-use crate::library::local::LocalStore;
+use crate::library::local::{LocalStore, validate_id};
 use crate::library::registry::{self, STD_ID};
 use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
 
@@ -51,19 +51,6 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
     let count = registry::add_std(store, &requested)?;
 
     println!("registered the standard library (`{STD_ID}`) for {count} compiler(s)");
-    Ok(())
-}
-
-/// ライブラリ ID がパス要素として安全か検証する。
-///
-/// ID はそのまま `$LOCAL/libraries/<id>` のディレクトリ名になるため、空・`.`/`..`・パス区切りを
-/// 含む ID を許すと意図しない場所を読み書きしてしまう。フェイルファストで早期に弾く。
-fn validate_id(id: &str) -> Result<()> {
-    if id.is_empty() || id == "." || id == ".." || id.contains('/') || id.contains('\\') {
-        bail!(
-            "library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)"
-        );
-    }
     Ok(())
 }
 
@@ -123,7 +110,7 @@ fn list(store: &LocalStore) -> Result<()> {
     // Registration で読む。一覧はアップグレード直後でもエラーにせず動くべき (バンドル時に自動移行)。
     // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
-        let reg = Registration::load(&store.tags_json(&id))?;
+        let reg = Registration::load(&store.tags_json(&id)?)?;
         println!("{id}\t{}\t{}", reg.kind_label(), reg.path.display());
     }
     Ok(())
@@ -137,7 +124,7 @@ fn show_field(label: &str, value: &str) {
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
     validate_id(id)?;
     ensure_registered(store, id)?;
-    match Tags::load(&store.tags_json(id)) {
+    match Tags::load(&store.tags_json(id)?) {
         Ok(tags) => show_tags(id, &tags, verbose),
         // 詳細 (定義識別子・ハッシュ) は現行スキーマでないと読めない。読み取りコマンドが状態を
         // 書き換えるのは避けたいので、自動移行はせず、読める基本情報だけ出して update を案内する。
@@ -150,7 +137,7 @@ fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
 
 /// スキーマが古く詳細を読めない登録について、`Registration` から読める基本情報だけ表示する。
 fn show_outdated(store: &LocalStore, id: &str, reason: &str) -> Result<()> {
-    let reg = Registration::load(&store.tags_json(id))?;
+    let reg = Registration::load(&store.tags_json(id)?)?;
     show_field("ID", id);
     show_field("Path", &reg.path.display().to_string());
     show_field("Kind", reg.kind_label());
@@ -255,7 +242,7 @@ mod tests {
         delete(&store, "lib").unwrap();
 
         assert!(!store.is_registered("lib"));
-        assert!(!store.library_dir("lib").exists());
+        assert!(!store.library_dir("lib").unwrap().exists());
     }
 
     #[test]
@@ -281,7 +268,7 @@ mod tests {
         .unwrap();
         update(&store, Some("lib"), None).unwrap();
 
-        let tags = Tags::load(&store.tags_json("lib")).unwrap();
+        let tags = Tags::load(&store.tags_json("lib").unwrap()).unwrap();
         match tags.kind {
             TagsKind::Library { files, .. } => {
                 assert!(files.contains_key("atcoder/fenwick.hpp"));
@@ -300,10 +287,10 @@ mod tests {
         add(&store, "lib", original.path()).unwrap();
         update(&store, Some("lib"), Some(moved.path())).unwrap();
 
-        let tags = Tags::load(&store.tags_json("lib")).unwrap();
+        let tags = Tags::load(&store.tags_json("lib").unwrap()).unwrap();
         assert_eq!(tags.path, moved.path().canonicalize().unwrap());
-        assert!(store.dummy_dir("lib").join("b.hpp").is_file());
-        assert!(!store.dummy_dir("lib").join("a.hpp").is_file());
+        assert!(store.dummy_dir("lib").unwrap().join("b.hpp").is_file());
+        assert!(!store.dummy_dir("lib").unwrap().join("a.hpp").is_file());
     }
 
     #[test]
@@ -341,7 +328,7 @@ mod tests {
         list(&store).unwrap();
         show(&store, "mylib", true).unwrap();
         assert!(
-            Tags::load(&store.tags_json("mylib")).is_err(),
+            Tags::load(&store.tags_json("mylib").unwrap()).is_err(),
             "読み取りコマンドは登録を書き換えない"
         );
     }

@@ -1,6 +1,21 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
+
+/// ライブラリ ID がパス要素として安全か検証する。
+///
+/// ID はそのまま `$LOCAL/libraries/<id>` のディレクトリ名になるため、空・`.`/`..`・パス区切りを
+/// 含む ID を許すと意図しない場所を読み書きしてしまう。ID をパスへ変換する境界である [`LocalStore`]
+/// も自ら強制するので、呼び出し元の検証忘れがストア外の読み書き (最悪 `remove_dir_all`) に繋がる
+/// ことはない。受け口はフェイルファストな入力検証としてこれを直接使う。
+pub fn validate_id(id: &str) -> Result<()> {
+    if id.is_empty() || id == "." || id == ".." || id.contains('/') || id.contains('\\') {
+        bail!(
+            "library ID `{id}` is not allowed (empty, `.`/`..`, or IDs containing path separators are rejected)"
+        );
+    }
+    Ok(())
+}
 
 /// risundle の内部データを保存するローカルディレクトリ (`$LOCAL`) を表す。
 ///
@@ -32,21 +47,23 @@ impl LocalStore {
         self.root.join(Self::LIBRARIES_DIR)
     }
 
-    pub fn library_dir(&self, id: &str) -> PathBuf {
-        self.libraries_dir().join(id)
+    pub fn library_dir(&self, id: &str) -> Result<PathBuf> {
+        validate_id(id)?;
+        Ok(self.libraries_dir().join(id))
     }
 
-    pub fn tags_json(&self, id: &str) -> PathBuf {
-        self.library_dir(id).join(Self::TAGS_FILE)
+    pub fn tags_json(&self, id: &str) -> Result<PathBuf> {
+        Ok(self.library_dir(id)?.join(Self::TAGS_FILE))
     }
 
-    pub fn dummy_dir(&self, id: &str) -> PathBuf {
-        self.library_dir(id).join(Self::DUMMY_DIR)
+    pub fn dummy_dir(&self, id: &str) -> Result<PathBuf> {
+        Ok(self.library_dir(id)?.join(Self::DUMMY_DIR))
     }
 
-    /// `tags.json` の有無で、ライブラリが登録済みかどうかを判定する。
+    /// `tags.json` の有無で、ライブラリが登録済みかどうかを判定する。不正な ID は登録され得ない
+    /// ので false を返す。
     pub fn is_registered(&self, id: &str) -> bool {
-        self.tags_json(id).is_file()
+        self.tags_json(id).is_ok_and(|path| path.is_file())
     }
 
     /// `tags.json` を持つ登録済みライブラリの ID 一覧を、昇順で返す。
@@ -94,8 +111,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn register(store: &LocalStore, id: &str) {
-        fs::create_dir_all(store.library_dir(id)).unwrap();
-        fs::write(store.tags_json(id), "{}").unwrap();
+        fs::create_dir_all(store.library_dir(id).unwrap()).unwrap();
+        fs::write(store.tags_json(id).unwrap(), "{}").unwrap();
     }
 
     #[test]
@@ -103,17 +120,26 @@ mod tests {
         let store = LocalStore::with_root("/tmp/local");
         assert_eq!(store.libraries_dir(), Path::new("/tmp/local/libraries"));
         assert_eq!(
-            store.library_dir("std"),
+            store.library_dir("std").unwrap(),
             Path::new("/tmp/local/libraries/std")
         );
         assert_eq!(
-            store.tags_json("std"),
+            store.tags_json("std").unwrap(),
             Path::new("/tmp/local/libraries/std/tags.json")
         );
         assert_eq!(
-            store.dummy_dir("std"),
+            store.dummy_dir("std").unwrap(),
             Path::new("/tmp/local/libraries/std/dummy")
         );
+    }
+
+    #[test]
+    fn rejects_ids_that_escape_the_store() {
+        let store = LocalStore::with_root("/tmp/local");
+        for bad in ["", ".", "..", "../evil", "a/b", "a\\b"] {
+            assert!(store.library_dir(bad).is_err(), "{bad} を弾くべき");
+            assert!(!store.is_registered(bad));
+        }
     }
 
     #[test]
@@ -129,7 +155,7 @@ mod tests {
 
         register(&store, "std");
         register(&store, "ac-library");
-        fs::create_dir_all(store.library_dir("incomplete")).unwrap();
+        fs::create_dir_all(store.library_dir("incomplete").unwrap()).unwrap();
 
         assert_eq!(store.library_ids().unwrap(), vec!["ac-library", "std"]);
         assert!(store.is_registered("std"));

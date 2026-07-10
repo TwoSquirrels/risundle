@@ -21,8 +21,13 @@ pub const STD_ID: &str = "std";
 /// 保存するため)。既存のディレクトリは丸ごと作り直すので、登録失敗で残った不完全な状態や、更新前の
 /// 古い内容を引きずらない。
 pub fn register(store: &LocalStore, id: &str, source_root: &Path) -> Result<()> {
+    // 受け口の同名チェックは案内のための早期検証で、こちらは公開 API としての不変条件。std の
+    // 登録を Library 種別で上書きされると、認識コンパイラ集合の喪失など静かな壊れ方をする。
+    if id == STD_ID {
+        bail!("register the standard library with `risundle library add-std`");
+    }
     recreate_library_dir(store, id)?;
-    dummy::generate(source_root, &store.dummy_dir(id))?;
+    dummy::generate(source_root, &store.dummy_dir(id)?)?;
 
     // 識別子抽出はファイル数に比例して時間がかかるため、処理中のファイル名を逐次表示する。
     let names = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
@@ -35,7 +40,7 @@ pub fn register(store: &LocalStore, id: &str, source_root: &Path) -> Result<()> 
             implements: names.implements,
         },
     }
-    .save(&store.tags_json(id))
+    .save(&store.tags_json(id)?)
 }
 
 /// `std` に 1 つのコンパイラを加えて登録を作り直し、認識集合のコンパイラ数を返す。
@@ -99,7 +104,7 @@ fn existing_std_compilers(store: &LocalStore) -> Result<Vec<PathBuf>> {
     }
     // add-std は登録を作り直すため、既存の tags.json からは認識コンパイラ集合しか使わない。
     // update と同じく、スキーマの合わない登録からでも集合を引き継げるよう検証せずに読む。
-    Ok(Registration::load(&store.tags_json(STD_ID))?
+    Ok(Registration::load(&store.tags_json(STD_ID)?)?
         .compilers
         .unwrap_or_default())
 }
@@ -124,7 +129,7 @@ fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> R
         .cloned()
         .context("the system include paths are empty")?;
     recreate_library_dir(store, STD_ID)?;
-    let dummy_dir = store.dummy_dir(STD_ID);
+    let dummy_dir = store.dummy_dir(STD_ID)?;
     for (compiler, roots) in discovered {
         eprintln!(
             "  generating dummies for the system includes of {}",
@@ -140,18 +145,18 @@ fn register_std(store: &LocalStore, discovered: &[(PathBuf, Vec<PathBuf>)]) -> R
             compilers: discovered.iter().map(|(c, _)| c.clone()).collect(),
         },
     }
-    .save(&store.tags_json(STD_ID))
+    .save(&store.tags_json(STD_ID)?)
 }
 
 /// ライブラリの登録 (`$LOCAL/libraries/<id>` 一式) を削除する。
 pub fn remove(store: &LocalStore, id: &str) -> Result<()> {
-    let library_dir = store.library_dir(id);
+    let library_dir = store.library_dir(id)?;
     std::fs::remove_dir_all(&library_dir)
         .with_context(|| format!("failed to remove {}", library_dir.display()))
 }
 
 fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
-    let library_dir = store.library_dir(id);
+    let library_dir = store.library_dir(id)?;
     if library_dir.exists() {
         remove(store, id)?;
     }
@@ -173,7 +178,7 @@ pub fn resolve_source_root(path: &Path) -> Result<PathBuf> {
 /// 現行スキーマで読めるものは触らない。再生成に失敗した場合はエラーを返し、呼び出し側が案内する。
 pub fn auto_migrate(store: &LocalStore) -> Result<()> {
     for id in store.library_ids()? {
-        match Tags::load(&store.tags_json(&id)) {
+        match Tags::load(&store.tags_json(&id)?) {
             Ok(_) => continue, // 現行スキーマ: 触らない
             Err(err) if err.downcast_ref::<SchemaMismatch>().is_some() => {} // 旧スキーマ: 下で作り直す
             Err(err) => return Err(err), // 破損など: 呼び出し側へ委ねる
@@ -189,7 +194,7 @@ pub fn auto_migrate(store: &LocalStore) -> Result<()> {
 /// [`Registration`] はスキーマ検証をせず読むため、旧スキーマの登録からでも回復できる。std は
 /// コンパイラ集合を、通常ライブラリは登録パス (または明示された `path`) を種にして作り直す。
 pub fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
-    let reg = Registration::load(&store.tags_json(id))?;
+    let reg = Registration::load(&store.tags_json(id)?)?;
     match reg.compilers {
         Some(compilers) => {
             if path.is_some() {
@@ -230,7 +235,7 @@ mod tests {
         register(&store, "ac-library", source.path()).unwrap();
 
         assert!(store.is_registered("ac-library"));
-        let tags = Tags::load(&store.tags_json("ac-library")).unwrap();
+        let tags = Tags::load(&store.tags_json("ac-library").unwrap()).unwrap();
         match tags.kind {
             TagsKind::Library { hash, files, .. } => {
                 assert!(hash.starts_with("sha256:"));
@@ -241,6 +246,7 @@ mod tests {
         assert!(
             store
                 .dummy_dir("ac-library")
+                .unwrap()
                 .join("atcoder/modint.hpp")
                 .is_file()
         );
@@ -250,6 +256,17 @@ mod tests {
     fn resolve_source_root_rejects_missing_path() {
         let local = TempDir::new().unwrap();
         assert!(resolve_source_root(&local.path().join("nonexistent")).is_err());
+    }
+
+    #[test]
+    fn register_rejects_the_reserved_std_id() {
+        // 受け口を経ない呼び出しでも、std 登録を Library 種別で上書きさせない。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let source = source_with(&[("vector", "// std header")]);
+
+        assert!(register(&store, STD_ID, source.path()).is_err());
+        assert!(!store.is_registered(STD_ID));
     }
 
     #[test]
@@ -276,12 +293,12 @@ mod tests {
         ];
         register_std(&store, &discovered).unwrap();
 
-        let dummy = store.dummy_dir("std");
+        let dummy = store.dummy_dir("std").unwrap();
         for file in ["vector", "bits/stdc++.h", "immintrin.h", "arm_neon.h"] {
             assert!(dummy.join(file).is_file(), "{file} がダミー化されていない");
         }
 
-        let tags = Tags::load(&store.tags_json("std")).unwrap();
+        let tags = Tags::load(&store.tags_json("std").unwrap()).unwrap();
         assert_eq!(
             tags.kind,
             TagsKind::Std {
@@ -308,7 +325,7 @@ mod tests {
         reregister(&store, "mylib", None).unwrap();
 
         assert!(
-            Tags::load(&store.tags_json("mylib")).is_ok(),
+            Tags::load(&store.tags_json("mylib").unwrap()).is_ok(),
             "reregister 後は現行スキーマで読めるべき"
         );
     }
@@ -323,13 +340,13 @@ mod tests {
 
         auto_migrate(&store).unwrap();
         assert!(
-            Tags::load(&store.tags_json("mylib")).is_ok(),
+            Tags::load(&store.tags_json("mylib").unwrap()).is_ok(),
             "古い登録は移行されるべき"
         );
 
         // 既に現行スキーマなら再度呼んでも成功し、読める状態を保つ。
         auto_migrate(&store).unwrap();
-        assert!(Tags::load(&store.tags_json("mylib")).is_ok());
+        assert!(Tags::load(&store.tags_json("mylib").unwrap()).is_ok());
     }
 
     #[test]
@@ -339,7 +356,7 @@ mod tests {
         let store = store_in(&local);
         let source = source_with(&[("vec.hpp", "struct Vec {};")]);
         register(&store, "mylib", source.path()).unwrap();
-        fs::write(store.tags_json("mylib"), "{ not valid json").unwrap();
+        fs::write(store.tags_json("mylib").unwrap(), "{ not valid json").unwrap();
 
         assert!(auto_migrate(&store).is_err());
     }
@@ -355,6 +372,6 @@ mod tests {
         downgrade_schema(&store, "std");
 
         add_std(&store, &g).unwrap();
-        assert!(Tags::load(&store.tags_json("std")).is_ok());
+        assert!(Tags::load(&store.tags_json("std").unwrap()).is_ok());
     }
 }

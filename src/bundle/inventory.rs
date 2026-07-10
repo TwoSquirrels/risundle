@@ -41,10 +41,10 @@ impl Inventory {
     pub fn load(store: &LocalStore, keep: &BTreeSet<String>) -> Result<Self> {
         let mut libraries = Vec::new();
         for id in store.library_ids()? {
-            let tags = Tags::load(&store.tags_json(&id))?;
+            let tags = Tags::load(&store.tags_json(&id)?)?;
             libraries.push(Library {
                 keep: keep.contains(&id),
-                dummy_dir: store.dummy_dir(&id),
+                dummy_dir: store.dummy_dir(&id)?,
                 path: tags.path,
                 kind: tags.kind,
                 id,
@@ -216,14 +216,14 @@ mod tests {
 
     /// ソースディレクトリ (canonicalize 可能なよう実在させる) と tags.json を作って登録する。
     fn register(store: &LocalStore, id: &str, kind: TagsKind) -> PathBuf {
-        let source = store.library_dir(id).join("source");
+        let source = store.library_dir(id).unwrap().join("source");
         fs::create_dir_all(&source).unwrap();
         let path = source.canonicalize().unwrap();
         Tags {
             path: path.clone(),
             kind,
         }
-        .save(&store.tags_json(id))
+        .save(&store.tags_json(id).unwrap())
         .unwrap();
         path
     }
@@ -278,7 +278,7 @@ mod tests {
         assert!(
             flags
                 .windows(2)
-                .any(|w| w[0] == "-I" && w[1] == store.dummy_dir("std").to_string_lossy())
+                .any(|w| w[0] == "-I" && w[1] == store.dummy_dir("std").unwrap().to_string_lossy())
         );
         assert!(
             flags
@@ -468,7 +468,7 @@ mod tests {
         let store = LocalStore::with_root(local.path());
 
         // 実内容に一致するハッシュを持つライブラリを作る。
-        let source = store.library_dir("lib").join("source");
+        let source = store.library_dir("lib").unwrap().join("source");
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("a.hpp"), "struct a {};").unwrap();
         let path = source.canonicalize().unwrap();
@@ -484,7 +484,7 @@ mod tests {
                 implements: BTreeMap::new(),
             },
         }
-        .save(&store.tags_json("lib"))
+        .save(&store.tags_json("lib").unwrap())
         .unwrap();
 
         // 非維持なら検証対象 → 一致して通る。
@@ -497,7 +497,7 @@ mod tests {
 
         // 内容を変えるとハッシュ不一致でエラー。
         fs::write(
-            store.library_dir("lib").join("source/a.hpp"),
+            store.library_dir("lib").unwrap().join("source/a.hpp"),
             "struct a { int changed; };",
         )
         .unwrap();
