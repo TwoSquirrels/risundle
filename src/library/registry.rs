@@ -17,18 +17,18 @@ pub const STD_ID: &str = "std";
 
 /// 通常ライブラリのディレクトリを作り直し、ダミー・`tags.json` (hash + files) を生成する。
 ///
-/// `path` は canonicalize して保存する (絶対パス化と存在確認を兼ねる)。既存のディレクトリは
-/// 丸ごと作り直すので、登録失敗で残った不完全な状態や、更新前の古い内容を引きずらない。
-pub fn register(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
-    let source_root = resolve_source_root(path)?;
+/// `source_root` は [`resolve_source_root`] で解決済みの絶対パスを前提とする (`tags.json` にそのまま
+/// 保存するため)。既存のディレクトリは丸ごと作り直すので、登録失敗で残った不完全な状態や、更新前の
+/// 古い内容を引きずらない。
+pub fn register(store: &LocalStore, id: &str, source_root: &Path) -> Result<()> {
     recreate_library_dir(store, id)?;
-    dummy::generate(&source_root, &store.dummy_dir(id))?;
+    dummy::generate(source_root, &store.dummy_dir(id))?;
 
     // 識別子抽出はファイル数に比例して時間がかかるため、処理中のファイル名を逐次表示する。
-    let names = identifiers::enumerate(&source_root, |relative| eprintln!("  {relative}"))?;
-    let hash = hash::aggregate(&source_root)?;
+    let names = identifiers::enumerate(source_root, |relative| eprintln!("  {relative}"))?;
+    let hash = hash::aggregate(source_root)?;
     Tags {
-        path: source_root,
+        path: source_root.to_path_buf(),
         kind: TagsKind::Library {
             hash,
             files: names.definitions,
@@ -51,6 +51,9 @@ pub fn add_std(store: &LocalStore, requested: &Path) -> Result<usize> {
         compilers.push(resolved);
     }
 
+    // 進捗表示は検証 (コンパイラ解決・既存登録の読み込み) を抜けてから。失敗する呼び出しに
+    // 「registering...」を見せない。
+    eprintln!("registering the standard library...");
     let discovered = discover_all(&compilers)?;
     register_std(store, &discovered)?;
     Ok(compilers.len())
@@ -152,7 +155,7 @@ fn recreate_library_dir(store: &LocalStore, id: &str) -> Result<()> {
 
 /// インクルードパスを絶対パスへ解決する。`canonicalize` は存在しないパスでエラーになるため、
 /// 絶対パス化と存在確認を兼ねる。
-fn resolve_source_root(path: &Path) -> Result<PathBuf> {
+pub fn resolve_source_root(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
         .with_context(|| format!("failed to resolve include path {}", path.display()))
 }
@@ -192,7 +195,11 @@ pub fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<(
             register_std(store, &discovered)?;
         }
         None => {
-            register(store, id, path.unwrap_or(&reg.path))?;
+            // 保存済みパスも解決し直す: 実体が消えていれば登録を壊す前に失敗し (フェイルファスト)、
+            // 経路が symlink 化していれば現在の正規形へ更新する。登録が常にその時点の正規形を保存
+            // する、という add と同じ契約に揃える。
+            let source_root = resolve_source_root(path.unwrap_or(&reg.path))?;
+            register(store, id, &source_root)?;
         }
     }
     Ok(())
@@ -234,10 +241,9 @@ mod tests {
     }
 
     #[test]
-    fn register_rejects_missing_path() {
+    fn resolve_source_root_rejects_missing_path() {
         let local = TempDir::new().unwrap();
-        let store = store_in(&local);
-        assert!(register(&store, "lib", &local.path().join("nonexistent")).is_err());
+        assert!(resolve_source_root(&local.path().join("nonexistent")).is_err());
     }
 
     #[test]

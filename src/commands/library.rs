@@ -33,8 +33,10 @@ fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
             "library `{id}` is already registered; use `risundle library update {id}` to update it"
         );
     }
+    let source_root = registry::resolve_source_root(path)?;
+
     eprintln!("registering library `{id}`...");
-    registry::register(store, id, path)?;
+    registry::register(store, id, &source_root)?;
 
     println!("registered library `{id}`");
     Ok(())
@@ -46,8 +48,6 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
     let requested = compiler
         .map(Path::to_path_buf)
         .unwrap_or_else(|| Config::default().compiler);
-
-    eprintln!("registering the standard library...");
     let count = registry::add_std(store, &requested)?;
 
     println!("registered the standard library (`{STD_ID}`) for {count} compiler(s)");
