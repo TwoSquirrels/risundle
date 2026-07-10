@@ -13,10 +13,8 @@ use anyhow::{Context, Result, bail};
 use crate::fs::relpath;
 use crate::library::hash;
 use crate::library::local::LocalStore;
+use crate::library::registry::STD_ID;
 use crate::library::tags::{Tags, TagsKind};
-
-/// `std` として扱うライブラリ ID。維持指定時に `-nostdinc` を促す対象。
-const STD_ID: &str = "std";
 
 struct Library {
     id: String,
