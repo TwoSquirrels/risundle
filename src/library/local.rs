@@ -210,7 +210,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let store = LocalStore::with_root(temp.path());
         register(&store, "lib");
-        fs::create_dir_all(store.libraries_dir().join(OsStr::from_bytes(b"\xff"))).unwrap();
+        // APFS (macOS) などは不正な UTF-8 のファイル名自体を作らせないため、作れた場合のみ検証する。
+        if fs::create_dir_all(store.libraries_dir().join(OsStr::from_bytes(b"\xff"))).is_err() {
+            eprintln!("skipped: このファイルシステムは非 UTF-8 のファイル名を作れない");
+            return;
+        }
 
         assert_eq!(store.library_ids().unwrap(), vec!["lib"]);
     }
