@@ -46,6 +46,7 @@ const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier
 
 /// [`enumerate`] の結果。どちらもキーは `source_root` からの相対パス (`/` 区切り)、値は重複排除・
 /// 昇順の名前一覧で、該当する名前を持たないファイルはキー自体を含めない。
+#[derive(Debug)]
 pub struct Enumeration {
     /// 各ファイルが定義する識別子名 (tags.json の `files`)。
     pub definitions: BTreeMap<String, Vec<String>>,

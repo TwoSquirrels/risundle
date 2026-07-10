@@ -57,7 +57,7 @@ fn parse_quoted(s: &str) -> Option<(String, &str)> {
 ///
 /// linemarker 行を観測するたびに「現在の出所」を更新し、続くコード行をその出所に紐づける。
 /// 行を 1 つずつ [`Tracker::observe`] に与えて使う。
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Tracker {
     current: Option<String>,
 }

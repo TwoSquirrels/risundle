@@ -29,6 +29,7 @@ pub fn validate_id(id: &str) -> Result<()> {
 ///
 /// `$LOCAL` は `dirs::data_local_dir()` 配下の `risundle` ディレクトリを指す。
 /// ルートを差し替え可能にすることで、テストや将来の上書き設定を容易にする。
+#[derive(Debug)]
 pub struct LocalStore {
     root: PathBuf,
 }
