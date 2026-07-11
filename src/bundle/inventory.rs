@@ -56,6 +56,11 @@ impl Inventory {
     }
 
     /// `id` が登録済みライブラリに一致するか。keep 指定の no-op 検出 (#31) に使う。
+    ///
+    /// ディスク上の登録を見る [`LocalStore::is_registered`] と同じ述語だが、こちらは [`load`]
+    /// 済みの一覧を見る (バンドル中の追加 IO を避ける)。登録の判定基準を変えるときは両者を揃えること。
+    ///
+    /// [`load`]: Self::load
     pub fn is_registered(&self, id: &str) -> bool {
         self.libraries.iter().any(|lib| lib.id == id)
     }
