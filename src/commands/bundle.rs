@@ -208,8 +208,8 @@ impl Settings {
     /// 借用するだけで、呼び出し側が引き続き所有する。
     ///
     /// 実効設定に加えて、(config の keep ∪ `--keep`) のどれにも一致せず何も除外しなかった
-    /// `--no-keep` の ID 列 (重複排除・昇順) を返す。実効値ではなく no-op 警告 (#31) の材料で、
-    /// バンドル処理では使わない。
+    /// `--no-keep` の ID 列 (重複排除・昇順、std は対象外) を返す。実効値ではなく no-op 警告
+    /// (#31) の材料で、バンドル処理では使わない。
     fn resolve(
         file: &Path,
         no_config: bool,
@@ -231,9 +231,11 @@ impl Settings {
         // ファイルが膨らむだけの柔らかい失敗なので、衝突は展開側へ倒す)。
         let no_keep: BTreeSet<String> = no_keep.into_iter().collect();
         let kept: BTreeSet<String> = config.keep.into_iter().chain(keep).collect();
+        // std は no-op でも報告しない。--no-keep std は keep に std が無い環境でも
+        // [`warn_std_not_kept`] を黙らせる意図表明として意味を持つため (仕様も std を対象外と定める)。
         let noop_no_keeps = no_keep
             .iter()
-            .filter(|id| !kept.contains(*id))
+            .filter(|id| !kept.contains(*id) && *id != STD_ID)
             .cloned()
             .collect();
         let settings = Self {
@@ -677,6 +679,32 @@ mod tests {
         .unwrap();
         assert_eq!(noop, vec!["ac-libary".to_owned()]);
         assert!(settings.keep.is_empty());
+    }
+
+    #[test]
+    fn no_keep_std_is_never_reported_as_noop() {
+        // config が keep から std を外した環境でも、--no-keep std は「展開を明示する」正当な
+        // 操作 (warn_std_not_kept の抑制) なので、no-op として報告してはならない。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[library]\nkeep = [\"ac-library\"]\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let (_, noop) = Settings::resolve(
+            &file,
+            false,
+            None,
+            vec![],
+            vec![],
+            vec!["std".to_owned()],
+            None,
+        )
+        .unwrap();
+        assert!(noop.is_empty());
     }
 
     #[test]
