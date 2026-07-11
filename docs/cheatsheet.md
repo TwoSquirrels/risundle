@@ -206,7 +206,9 @@ If this fixes it, tree-shaking dropped a needed definition (a report in the [iss
 
 ### A library you passed to `-k` gets expanded anyway
 
-Are you writing the include as `#include "atcoder/dsu"`? Switch to the angle-bracket form `#include <atcoder/dsu>`.
+If a warning about unregistered libraries is printed, the ID does not match any registered name — check with `risundle library list` (or register it with `risundle library add` if you haven't yet).
+
+If there is no warning, are you writing the include as `#include "atcoder/dsu"`? Switch to the angle-bracket form `#include <atcoder/dsu>`.
 
 ### The standard library got expanded too
 

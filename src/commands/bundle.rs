@@ -33,7 +33,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     }
     registry::auto_migrate(&store)?;
 
-    // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Settings::resolve へ
+    // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Resolution::resolve へ
     // 所有権ごと渡し、設定とのマージで clone せずに済ませる。
     let embed = args.embed_override();
     let BundleArgs {
@@ -48,11 +48,16 @@ pub fn run(args: BundleArgs) -> Result<()> {
         ..
     } = args;
 
-    let std_removed_explicitly = no_keep.iter().any(|id| id == STD_ID);
-    let settings = Settings::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
+    let Resolution {
+        settings,
+        noop_no_keeps,
+        std_removed_explicitly,
+    } = Resolution::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
     warn_std_not_kept(&settings.keep, std_removed_explicitly);
+    warn_noop_no_keeps(&noop_no_keeps);
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
+    warn_unregistered_keeps(&settings.keep, &inventory);
     if !no_check && !no_tree_shaking {
         inventory.verify()?;
     }
@@ -109,6 +114,50 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
     )
 }
 
+/// 実効 keep のうち登録済みライブラリに一致しない ID を警告する。keep の機構は登録済み
+/// ライブラリをダミー経由へ切り替えることなので、未登録 ID の keep は完全な no-op である。
+/// typo と「config はコミット済みだが登録がまだ」(clone 直後) の両方で同じ文面が機能するよう、
+/// 意図は推測せず事実と処方だけを述べる。エラーにはしない: 後者が構造的に起きる上、typo の
+/// 帰結 (展開) は動く提出物なので `&&` チェーンを止めるべきでない (#31)。
+///
+/// `std` は除外する。std 未登録の報告は [`warn_std_compiler`] の管轄で、自動登録の失敗時に
+/// 二重警告になるため。
+fn warn_unregistered_keeps(keep: &BTreeSet<String>, inventory: &Inventory) {
+    let unregistered: Vec<&str> = keep
+        .iter()
+        .filter(|id| *id != STD_ID && !inventory.is_registered(id))
+        .map(String::as_str)
+        .collect();
+    if unregistered.is_empty() {
+        return;
+    }
+    eprintln!(
+        "warning: keep specifies unregistered libraries ({}); check the IDs with `risundle library list`, or register them with `risundle library add`",
+        quote_ids(&unregistered)
+    );
+}
+
+/// 何も除外しなかった `--no-keep` を警告する。[`warn_unregistered_keeps`] と同じ no-op 検出
+/// (#31)。こちらの typo は「keep されたまま `#include` が残り、提出先で初めて壊れる」という
+/// keep 側の typo (展開されるだけ) より硬い失敗につながるため、見逃さない。
+fn warn_noop_no_keeps(noop_no_keeps: &[String]) {
+    if noop_no_keeps.is_empty() {
+        return;
+    }
+    eprintln!(
+        "warning: `--no-keep` matched no kept library for {}; check the IDs with `risundle library list`",
+        quote_ids(noop_no_keeps)
+    );
+}
+
+/// 警告メッセージ用に ID 列を `` `a`, `b` `` 形式へ整える。
+fn quote_ids<S: AsRef<str>>(ids: &[S]) -> String {
+    ids.iter()
+        .map(|id| format!("`{}`", id.as_ref()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// 実効 keep から std が外れていれば警告する。std の展開はほぼ常に事故で、巨大な出力が黙って
 /// 生成され提出時のサイズ制限まで顕在化しないため、書き忘れ (設定ファイルの `keep` に std を
 /// 挙げ損ねた等) は防護する。一方 CLI の `--no-keep std` は明示された意思なので警告しない。
@@ -155,7 +204,19 @@ struct Settings {
     embed: bool,
 }
 
-impl Settings {
+/// [`Resolution::resolve`] の結果。実効設定に、実効値からは復元できない警告材料を名前付きで
+/// 添える。keep / `--no-keep` まわりの診断材料を増やすときは、`run` で CLI 引数を再スキャン
+/// せず、ここへフィールドを足すこと。
+struct Resolution {
+    settings: Settings,
+    /// (config の keep ∪ `--keep`) のどれにも一致せず何も除外しなかった `--no-keep` の ID
+    /// (重複排除・昇順、std は対象外)。no-op 警告 (#31) の材料で、バンドル処理では使わない。
+    noop_no_keeps: Vec<String>,
+    /// CLI で `--no-keep std` が明示されたか。[`warn_std_not_kept`] の抑制に使う。
+    std_removed_explicitly: bool,
+}
+
+impl Resolution {
     /// CLI で明示された値を消費して設定と重ね合わせる。`file` は設定ファイルの探索起点として
     /// 借用するだけで、呼び出し側が引き続き所有する。
     fn resolve(
@@ -178,18 +239,30 @@ impl Settings {
         // --no-keep が勝つ (誤 keep はジャッジで解決できない #include を残す硬い失敗、誤展開は
         // ファイルが膨らむだけの柔らかい失敗なので、衝突は展開側へ倒す)。
         let no_keep: BTreeSet<String> = no_keep.into_iter().collect();
-        Ok(Self {
+        let std_removed_explicitly = no_keep.contains(STD_ID);
+        let kept: BTreeSet<String> = config.keep.into_iter().chain(keep).collect();
+        // std は no-op でも報告しない。--no-keep std は keep に std が無い環境でも
+        // [`warn_std_not_kept`] を黙らせる意図表明として意味を持つため (仕様も std を対象外と定める)。
+        let noop_no_keeps = no_keep
+            .iter()
+            .filter(|id| !kept.contains(*id) && *id != STD_ID)
+            .cloned()
+            .collect();
+        let settings = Settings {
             compiler: compiler.unwrap_or(config.compiler),
             // 実効 options = config の options + CLI の options。上書きの意味論はコンパイラの
             // 後勝ち (-std 等) や -U に委ね、risundle 側では重複や矛盾を解釈しない。
             options: config.options.into_iter().chain(options).collect(),
-            keep: config
-                .keep
+            keep: kept
                 .into_iter()
-                .chain(keep)
                 .filter(|id| !no_keep.contains(id))
                 .collect(),
             embed: embed.unwrap_or(config.embed),
+        };
+        Ok(Self {
+            settings,
+            noop_no_keeps,
+            std_removed_explicitly,
         })
     }
 }
@@ -456,7 +529,7 @@ mod tests {
         std::fs::write(&file, "int main() {}").unwrap();
 
         // CLI で明示された値が勝つ (keep は設定への加算、options は設定への追記)。
-        let cli = Settings::resolve(
+        let cli = Resolution::resolve(
             &file,
             false,
             Some(PathBuf::from("my-g++")),
@@ -465,7 +538,8 @@ mod tests {
             vec![],
             Some(true),
         )
-        .unwrap();
+        .unwrap()
+        .settings;
         assert_eq!(cli.compiler, PathBuf::from("my-g++"));
         let mut expected_options = Config::default().options;
         expected_options.push("-O0".to_owned());
@@ -476,7 +550,9 @@ mod tests {
         assert!(cli.embed);
 
         // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
-        let defaults = Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
+        let defaults = Resolution::resolve(&file, false, None, vec![], vec![], vec![], None)
+            .unwrap()
+            .settings;
         let expected = Config::default();
         assert_eq!(defaults.compiler, expected.compiler);
         assert_eq!(defaults.options, expected.options);
@@ -499,11 +575,14 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let from_config =
-            Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
+        let from_config = Resolution::resolve(&file, false, None, vec![], vec![], vec![], None)
+            .unwrap()
+            .settings;
         assert!(from_config.embed);
         let cancelled =
-            Settings::resolve(&file, false, None, vec![], vec![], vec![], Some(false)).unwrap();
+            Resolution::resolve(&file, false, None, vec![], vec![], vec![], Some(false))
+                .unwrap()
+                .settings;
         assert!(!cancelled.embed);
     }
 
@@ -519,7 +598,9 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let isolated = Settings::resolve(&file, true, None, vec![], vec![], vec![], None).unwrap();
+        let isolated = Resolution::resolve(&file, true, None, vec![], vec![], vec![], None)
+            .unwrap()
+            .settings;
         let expected = Config::default();
         assert_eq!(isolated.compiler, expected.compiler);
         assert_eq!(isolated.options, expected.options);
@@ -528,6 +609,27 @@ mod tests {
             expected.keep.into_iter().collect::<BTreeSet<_>>()
         );
         assert!(!isolated.embed);
+    }
+
+    #[test]
+    fn warn_unregistered_keeps_skips_std_and_registered_ids() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let inventory = empty_inventory(&store);
+
+        // 未登録 ID → 警告 (集約 1 行)。
+        warn_unregistered_keeps(&["ac-libary".to_owned()].into(), &inventory);
+        // std は warn_std_compiler の管轄なので、未登録でも対象外。
+        warn_unregistered_keeps(&["std".to_owned()].into(), &inventory);
+        // 空なら何も出さない。
+        warn_unregistered_keeps(&BTreeSet::new(), &inventory);
+    }
+
+    #[test]
+    fn quote_ids_joins_with_backticks() {
+        assert_eq!(quote_ids(&["a"]), "`a`");
+        assert_eq!(quote_ids(&["a", "b"]), "`a`, `b`");
     }
 
     #[test]
@@ -549,7 +651,7 @@ mod tests {
         std::fs::write(&file, "int main() {}").unwrap();
         let resolve = |keep: &[&str], no_keep: &[&str]| {
             let owned = |ids: &[&str]| ids.iter().map(|&id| (*id).to_owned()).collect();
-            Settings::resolve(
+            Resolution::resolve(
                 &file,
                 false,
                 None,
@@ -559,6 +661,7 @@ mod tests {
                 None,
             )
             .unwrap()
+            .settings
             .keep
         };
 
@@ -568,5 +671,63 @@ mod tests {
         assert!(!resolve(&["std"], &["std"]).contains("std"));
         // 他の ID には影響しない。
         assert!(resolve(&["ac-library"], &["std"]).contains("ac-library"));
+    }
+
+    #[test]
+    fn resolve_reports_no_keeps_that_removed_nothing() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+        let owned = |ids: &[&str]| ids.iter().map(|&id| (*id).to_owned()).collect();
+
+        // --no-keep std は既定の keep に一致する (no-op でない)。ac-libary は何にも一致しない。
+        // 重複は 1 つにまとまる。
+        let resolution = Resolution::resolve(
+            &file,
+            false,
+            None,
+            vec![],
+            vec![],
+            owned(&["std", "ac-libary", "ac-libary"]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(resolution.noop_no_keeps, vec!["ac-libary".to_owned()]);
+        assert!(resolution.settings.keep.is_empty());
+        assert!(resolution.std_removed_explicitly);
+    }
+
+    #[test]
+    fn no_keep_std_is_never_reported_as_noop() {
+        // config が keep から std を外した環境でも、--no-keep std は「展開を明示する」正当な
+        // 操作 (warn_std_not_kept の抑制) なので、no-op として報告してはならない。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[library]\nkeep = [\"ac-library\"]\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let resolution = Resolution::resolve(
+            &file,
+            false,
+            None,
+            vec![],
+            vec![],
+            vec!["std".to_owned()],
+            None,
+        )
+        .unwrap();
+        assert!(resolution.noop_no_keeps.is_empty());
+        assert!(resolution.std_removed_explicitly);
+    }
+
+    #[test]
+    fn warn_noop_no_keeps_only_fires_on_leftovers() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        warn_noop_no_keeps(&[]);
+        warn_noop_no_keeps(&["ac-libary".to_owned()]);
     }
 }

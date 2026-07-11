@@ -205,7 +205,9 @@ risundle --no-tree-shaking main.cpp > submission.cpp
 
 ### `-k` したはずのライブラリが展開されてしまう
 
-解答側の include を `#include "atcoder/dsu"` のような `"..."` 形式で書いていませんか。`#include <atcoder/dsu>` の山括弧形式に変えてください。
+未登録ライブラリの警告が出ている場合は、指定した ID が登録名と一致していません。`risundle library list` で登録名を確認してください (登録がまだなら `risundle library add` を)。
+
+警告が出ていない場合は、解答側の include を `#include "atcoder/dsu"` のような `"..."` 形式で書いていませんか。`#include <atcoder/dsu>` の山括弧形式に変えてください。
 
 ### 標準ライブラリまで展開されてしまう
 
