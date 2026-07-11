@@ -55,6 +55,11 @@ impl Inventory {
         Ok(Self { libraries })
     }
 
+    /// `id` が登録済みライブラリに一致するか。keep 指定の no-op 検出 (#31) に使う。
+    pub fn is_registered(&self, id: &str) -> bool {
+        self.libraries.iter().any(|lib| lib.id == id)
+    }
+
     /// 各ライブラリの `-I` フラグ列。維持指定はダミーへ、それ以外は実パスへ向ける。
     pub fn include_flags(&self) -> Vec<String> {
         self.libraries
@@ -258,6 +263,17 @@ mod tests {
 
     fn keep_set(ids: &[&str]) -> BTreeSet<String> {
         ids.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn is_registered_matches_only_registered_ids() {
+        let local = TempDir::new().unwrap();
+        let store = LocalStore::with_root(local.path());
+        register(&store, "ac-library", library_kind(&[]));
+
+        let inventory = Inventory::load(&store, &keep_set(&[])).unwrap();
+        assert!(inventory.is_registered("ac-library"));
+        assert!(!inventory.is_registered("ac-libary"));
     }
 
     #[test]

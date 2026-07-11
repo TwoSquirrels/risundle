@@ -53,6 +53,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     warn_std_not_kept(&settings.keep, std_removed_explicitly);
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
+    warn_unregistered_keeps(&settings.keep, &inventory);
     if !no_check && !no_tree_shaking {
         inventory.verify()?;
     }
@@ -107,6 +108,37 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
         || origin.to_owned(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+/// 実効 keep のうち登録済みライブラリに一致しない ID を警告する。keep の機構は登録済み
+/// ライブラリをダミー経由へ切り替えることなので、未登録 ID の keep は完全な no-op である。
+/// typo と「config はコミット済みだが登録がまだ」(clone 直後) の両方で同じ文面が機能するよう、
+/// 意図は推測せず事実と処方だけを述べる。エラーにはしない: 後者が構造的に起きる上、typo の
+/// 帰結 (展開) は動く提出物なので `&&` チェーンを止めるべきでない (#31)。
+///
+/// `std` は除外する。std 未登録の報告は [`warn_std_compiler`] の管轄で、自動登録の失敗時に
+/// 二重警告になるため。
+fn warn_unregistered_keeps(keep: &BTreeSet<String>, inventory: &Inventory) {
+    let unregistered: Vec<&str> = keep
+        .iter()
+        .filter(|id| *id != STD_ID && !inventory.is_registered(id))
+        .map(String::as_str)
+        .collect();
+    if unregistered.is_empty() {
+        return;
+    }
+    eprintln!(
+        "warning: keep specifies unregistered libraries ({}); check the IDs with `risundle library list`, or register them with `risundle library add`",
+        quote_ids(&unregistered)
+    );
+}
+
+/// 警告メッセージ用に ID 列を `` `a`, `b` `` 形式へ整える。
+fn quote_ids(ids: &[&str]) -> String {
+    ids.iter()
+        .map(|id| format!("`{id}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// 実効 keep から std が外れていれば警告する。std の展開はほぼ常に事故で、巨大な出力が黙って
@@ -528,6 +560,27 @@ mod tests {
             expected.keep.into_iter().collect::<BTreeSet<_>>()
         );
         assert!(!isolated.embed);
+    }
+
+    #[test]
+    fn warn_unregistered_keeps_skips_std_and_registered_ids() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        let local = TempDir::new().unwrap();
+        let store = store_in(&local);
+        let inventory = empty_inventory(&store);
+
+        // 未登録 ID → 警告 (集約 1 行)。
+        warn_unregistered_keeps(&["ac-libary".to_owned()].into(), &inventory);
+        // std は warn_std_compiler の管轄なので、未登録でも対象外。
+        warn_unregistered_keeps(&["std".to_owned()].into(), &inventory);
+        // 空なら何も出さない。
+        warn_unregistered_keeps(&BTreeSet::new(), &inventory);
+    }
+
+    #[test]
+    fn quote_ids_joins_with_backticks() {
+        assert_eq!(quote_ids(&["a"]), "`a`");
+        assert_eq!(quote_ids(&["a", "b"]), "`a`, `b`");
     }
 
     #[test]
