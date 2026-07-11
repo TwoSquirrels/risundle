@@ -15,6 +15,7 @@ This document goes deeper than the README, covering each command's behavior, err
 ## `library` subcommand
 
 - `add <id> <path>` — Register `<path>` as an include path.
+    - Errors if `<id>` is empty, `.`, `..`, or contains a path separator (`/`, `\`) or `:` (the ID is used as an internal data directory name as is).
     - Errors if `<id>` is `std` (use `add-std` for the standard library).
     - Errors if the same `<id>` is already registered.
     - On registration, records the list of defined identifiers for each file, the list of implementation target type names, and an aggregate hash computed from the contents under `<path>`. An implementation target is the qualifier of an out-of-class qualified definition (`X<...>::method`) or the primary template name of an explicit specialization (`template <> struct T<...>`), expressing "which type this file implements".

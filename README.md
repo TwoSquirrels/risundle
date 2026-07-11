@@ -17,8 +17,8 @@ risundle bundles your competitive programming solution, libraries included, into
 - It keeps only the code your solution actually uses, so submissions pass even on judges with strict size limits.
 - Prepare a single template that includes all of your own libraries, and you no longer need to switch includes per problem.
 
-> [!WARNING]
-> v1.0 supports header-only libraries only. Libraries that split declarations and implementations across separate files may lose their definitions after bundling and fail to compile.
+> [!NOTE]
+> Libraries that split declarations and implementations across files are handled by tracing implementation files through the "implementation target type names" recorded at registration. Files whose target cannot be determined statically (e.g. files defining only free-function operators) may still lose their definitions after bundling and fail to compile.
 
 ## Installation
 
@@ -128,7 +128,7 @@ risundle stays nearly constant regardless of library size, while IWYU grows as t
 
 1. Expand includes via preprocessing (`-E`). Libraries marked to be kept (`keep`) are left as `#include` by routing them through a dummy.
 2. Detect the identifiers your solution uses through lexical analysis, and reverse-look-up the dependent headers from the definitions of registered libraries.
-3. Compute the transitive closure of required headers with `-M`, and remove the unneeded headers left in the output.
+3. Compute the transitive closure of required headers with `-M` (also keeping the implementation files of needed types), and remove the unneeded headers left in the output.
 4. Reassemble everything into a single file while preserving the original origins with `#line` directives.
 
 Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly.
