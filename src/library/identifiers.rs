@@ -118,7 +118,9 @@ fn collect_definitions(
         return;
     }
     for field in ["name", "declarator"] {
-        if let Some(child) = node.child_by_field_name(field) {
+        let mut cursor = node.walk();
+        // `int x, y;` のように 1 宣言に宣言子は複数付き得るため、最初の 1 つでは足りない。
+        for child in node.children_by_field_name(field, &mut cursor) {
             collect_leaf(child, source, names, implements);
         }
     }
@@ -333,6 +335,16 @@ mod tests {
         // type フィールド内に直接書かれた型定義も、全子再帰で拾える。
         let names = names_in("struct X { int a; } var; enum E { Red } e;");
         for expected in ["X", "a", "var", "E", "Red", "e"] {
+            assert!(names.contains(&expected.to_owned()), "{expected} が漏れた");
+        }
+    }
+
+    #[test]
+    fn captures_all_declarators_in_one_declaration() {
+        // `int x, y;` の 2 個目以降も拾う (#41)。struct メンバのむき出しの field_identifier は
+        // ラッパーを持たず子再帰でも救われないため、declarator フィールドの全列挙だけが経路。
+        let names = names_in("struct S { int x, y; };\nstruct T { int a = 0, b = 0; };");
+        for expected in ["S", "x", "y", "T", "a", "b"] {
             assert!(names.contains(&expected.to_owned()), "{expected} が漏れた");
         }
     }
