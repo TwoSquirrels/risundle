@@ -33,7 +33,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     }
     registry::auto_migrate(&store)?;
 
-    // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Settings::resolve へ
+    // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Resolution::resolve へ
     // 所有権ごと渡し、設定とのマージで clone せずに済ませる。
     let embed = args.embed_override();
     let BundleArgs {
@@ -48,9 +48,11 @@ pub fn run(args: BundleArgs) -> Result<()> {
         ..
     } = args;
 
-    let std_removed_explicitly = no_keep.iter().any(|id| id == STD_ID);
-    let (settings, noop_no_keeps) =
-        Settings::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
+    let Resolution {
+        settings,
+        noop_no_keeps,
+        std_removed_explicitly,
+    } = Resolution::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
     warn_std_not_kept(&settings.keep, std_removed_explicitly);
     warn_noop_no_keeps(&noop_no_keeps);
     let inventory = Inventory::load(&store, &settings.keep)?;
@@ -203,13 +205,21 @@ struct Settings {
     embed: bool,
 }
 
-impl Settings {
+/// [`Resolution::resolve`] の結果。実効設定に、実効値からは復元できない警告材料を名前付きで
+/// 添える。keep / `--no-keep` まわりの診断材料を増やすときは、`run` で CLI 引数を再スキャン
+/// せず、ここへフィールドを足すこと。
+struct Resolution {
+    settings: Settings,
+    /// (config の keep ∪ `--keep`) のどれにも一致せず何も除外しなかった `--no-keep` の ID
+    /// (重複排除・昇順、std は対象外)。no-op 警告 (#31) の材料で、バンドル処理では使わない。
+    noop_no_keeps: Vec<String>,
+    /// CLI で `--no-keep std` が明示されたか。[`warn_std_not_kept`] の抑制に使う。
+    std_removed_explicitly: bool,
+}
+
+impl Resolution {
     /// CLI で明示された値を消費して設定と重ね合わせる。`file` は設定ファイルの探索起点として
     /// 借用するだけで、呼び出し側が引き続き所有する。
-    ///
-    /// 実効設定に加えて、(config の keep ∪ `--keep`) のどれにも一致せず何も除外しなかった
-    /// `--no-keep` の ID 列 (重複排除・昇順、std は対象外) を返す。実効値ではなく no-op 警告
-    /// (#31) の材料で、バンドル処理では使わない。
     fn resolve(
         file: &Path,
         no_config: bool,
@@ -218,7 +228,7 @@ impl Settings {
         keep: Vec<String>,
         no_keep: Vec<String>,
         embed: Option<bool>,
-    ) -> Result<(Self, Vec<String>)> {
+    ) -> Result<Self> {
         // --no-config は「設定ファイルが 1 つも見つからない環境」と完全に同一の挙動と定義する。
         // これにより、CLI だけで組み込み既定から実効設定を組み立て直せることが常に保証される。
         let config = if no_config {
@@ -230,6 +240,7 @@ impl Settings {
         // --no-keep が勝つ (誤 keep はジャッジで解決できない #include を残す硬い失敗、誤展開は
         // ファイルが膨らむだけの柔らかい失敗なので、衝突は展開側へ倒す)。
         let no_keep: BTreeSet<String> = no_keep.into_iter().collect();
+        let std_removed_explicitly = no_keep.contains(STD_ID);
         let kept: BTreeSet<String> = config.keep.into_iter().chain(keep).collect();
         // std は no-op でも報告しない。--no-keep std は keep に std が無い環境でも
         // [`warn_std_not_kept`] を黙らせる意図表明として意味を持つため (仕様も std を対象外と定める)。
@@ -238,7 +249,7 @@ impl Settings {
             .filter(|id| !kept.contains(*id) && *id != STD_ID)
             .cloned()
             .collect();
-        let settings = Self {
+        let settings = Settings {
             compiler: compiler.unwrap_or(config.compiler),
             // 実効 options = config の options + CLI の options。上書きの意味論はコンパイラの
             // 後勝ち (-std 等) や -U に委ね、risundle 側では重複や矛盾を解釈しない。
@@ -249,7 +260,11 @@ impl Settings {
                 .collect(),
             embed: embed.unwrap_or(config.embed),
         };
-        Ok((settings, noop_no_keeps))
+        Ok(Self {
+            settings,
+            noop_no_keeps,
+            std_removed_explicitly,
+        })
     }
 }
 
@@ -515,7 +530,7 @@ mod tests {
         std::fs::write(&file, "int main() {}").unwrap();
 
         // CLI で明示された値が勝つ (keep は設定への加算、options は設定への追記)。
-        let cli = Settings::resolve(
+        let cli = Resolution::resolve(
             &file,
             false,
             Some(PathBuf::from("my-g++")),
@@ -525,7 +540,7 @@ mod tests {
             Some(true),
         )
         .unwrap()
-        .0;
+        .settings;
         assert_eq!(cli.compiler, PathBuf::from("my-g++"));
         let mut expected_options = Config::default().options;
         expected_options.push("-O0".to_owned());
@@ -536,9 +551,9 @@ mod tests {
         assert!(cli.embed);
 
         // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
-        let defaults = Settings::resolve(&file, false, None, vec![], vec![], vec![], None)
+        let defaults = Resolution::resolve(&file, false, None, vec![], vec![], vec![], None)
             .unwrap()
-            .0;
+            .settings;
         let expected = Config::default();
         assert_eq!(defaults.compiler, expected.compiler);
         assert_eq!(defaults.options, expected.options);
@@ -561,13 +576,13 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let from_config = Settings::resolve(&file, false, None, vec![], vec![], vec![], None)
+        let from_config = Resolution::resolve(&file, false, None, vec![], vec![], vec![], None)
             .unwrap()
-            .0;
+            .settings;
         assert!(from_config.embed);
-        let cancelled = Settings::resolve(&file, false, None, vec![], vec![], vec![], Some(false))
+        let cancelled = Resolution::resolve(&file, false, None, vec![], vec![], vec![], Some(false))
             .unwrap()
-            .0;
+            .settings;
         assert!(!cancelled.embed);
     }
 
@@ -583,9 +598,9 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let isolated = Settings::resolve(&file, true, None, vec![], vec![], vec![], None)
+        let isolated = Resolution::resolve(&file, true, None, vec![], vec![], vec![], None)
             .unwrap()
-            .0;
+            .settings;
         let expected = Config::default();
         assert_eq!(isolated.compiler, expected.compiler);
         assert_eq!(isolated.options, expected.options);
@@ -636,7 +651,7 @@ mod tests {
         std::fs::write(&file, "int main() {}").unwrap();
         let resolve = |keep: &[&str], no_keep: &[&str]| {
             let owned = |ids: &[&str]| ids.iter().map(|&id| (*id).to_owned()).collect();
-            Settings::resolve(
+            Resolution::resolve(
                 &file,
                 false,
                 None,
@@ -646,7 +661,7 @@ mod tests {
                 None,
             )
             .unwrap()
-            .0
+            .settings
             .keep
         };
 
@@ -667,7 +682,7 @@ mod tests {
 
         // --no-keep std は既定の keep に一致する (no-op でない)。ac-libary は何にも一致しない。
         // 重複は 1 つにまとまる。
-        let (settings, noop) = Settings::resolve(
+        let resolution = Resolution::resolve(
             &file,
             false,
             None,
@@ -677,8 +692,9 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(noop, vec!["ac-libary".to_owned()]);
-        assert!(settings.keep.is_empty());
+        assert_eq!(resolution.noop_no_keeps, vec!["ac-libary".to_owned()]);
+        assert!(resolution.settings.keep.is_empty());
+        assert!(resolution.std_removed_explicitly);
     }
 
     #[test]
@@ -694,7 +710,7 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let (_, noop) = Settings::resolve(
+        let resolution = Resolution::resolve(
             &file,
             false,
             None,
@@ -704,7 +720,8 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(noop.is_empty());
+        assert!(resolution.noop_no_keeps.is_empty());
+        assert!(resolution.std_removed_explicitly);
     }
 
     #[test]
