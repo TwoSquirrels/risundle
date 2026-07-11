@@ -146,7 +146,7 @@ fn warn_std_compiler(compiler: &Path, inventory: &Inventory) {
 
 /// `.risundlerc.toml` の設定に CLI オプションを重ねた実効設定。重ね方は項目の型ごとに決まる:
 /// スカラー (`compiler`) と bool (`embed`) は CLI 明示が設定を上書きし、集合 (`keep`) は
-/// 設定へ加算した上で `--no-keep` を除く (#24)。
+/// 設定へ加算した上で `--no-keep` を除き、順序付きリスト (`options`) は設定へ追記する (#24)。
 struct Settings {
     compiler: PathBuf,
     options: Vec<String>,
@@ -172,11 +172,9 @@ impl Settings {
         let no_keep: BTreeSet<String> = no_keep.into_iter().collect();
         Ok(Self {
             compiler: compiler.unwrap_or(config.compiler),
-            options: if options.is_empty() {
-                config.options
-            } else {
-                options
-            },
+            // 実効 options = config の options + CLI の options。上書きの意味論はコンパイラの
+            // 後勝ち (-std 等) や -U に委ね、risundle 側では重複や矛盾を解釈しない。
+            options: config.options.into_iter().chain(options).collect(),
             keep: config
                 .keep
                 .into_iter()
@@ -449,18 +447,21 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        // CLI で明示された値が勝つ (keep は上書きではなく設定への加算)。
+        // CLI で明示された値が勝つ (keep は設定への加算、options は設定への追記)。
         let cli = Settings::resolve(
             &file,
             Some(PathBuf::from("my-g++")),
-            vec!["-O2".to_owned()],
+            vec!["-O0".to_owned()],
             vec!["ac-library".to_owned()],
             vec![],
             Some(true),
         )
         .unwrap();
         assert_eq!(cli.compiler, PathBuf::from("my-g++"));
-        assert_eq!(cli.options, vec!["-O2".to_owned()]);
+        let mut expected_options = Config::default().options;
+        expected_options.push("-O0".to_owned());
+        // 追記なので -std=gnu++17 等の既定は生き残り、-O0 は既定の -O2 に後勝ちする。
+        assert_eq!(cli.options, expected_options);
         assert!(cli.keep.contains("ac-library"));
         assert!(cli.keep.contains("std"), "-k は既定の std を消さない");
         assert!(cli.embed);
