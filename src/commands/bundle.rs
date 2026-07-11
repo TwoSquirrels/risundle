@@ -117,7 +117,7 @@ fn warn_std_not_kept(keep: &BTreeSet<String>, removed_explicitly: bool) {
         return;
     }
     eprintln!(
-        "warning: the standard library (`{STD_ID}`) is not in the keep set and will be fully expanded; add \"{STD_ID}\" to `keep` in .risundlerc.toml, or pass `--no-keep {STD_ID}` to make the expansion explicit"
+        "warning: the standard library (`{STD_ID}`) is not kept and will be fully expanded; add \"{STD_ID}\" to `keep` in .risundlerc.toml, or pass `--no-keep {STD_ID}` to make the expansion explicit"
     );
 }
 

@@ -22,11 +22,11 @@ pub struct BundleArgs {
     #[arg(short, long)]
     pub compiler: Option<PathBuf>,
 
-    /// Library ID to add to the keep set, leaving it out of tree-shaking (can be repeated)
+    /// Also keep a library unexpanded, out of tree-shaking (can be repeated)
     #[arg(short, long = "keep", value_name = "ID")]
     pub keep: Vec<String>,
 
-    /// Library ID to remove from the keep set (can be repeated; beats --keep)
+    /// Stop keeping a library (can be repeated; beats --keep)
     #[arg(long = "no-keep", value_name = "ID")]
     pub no_keep: Vec<String>,
 
