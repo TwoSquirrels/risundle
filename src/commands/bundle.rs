@@ -47,7 +47,9 @@ pub fn run(args: BundleArgs) -> Result<()> {
         ..
     } = args;
 
+    let std_removed_explicitly = no_keep.iter().any(|id| id == STD_ID);
     let settings = Settings::resolve(&file, compiler, options, keep, no_keep, embed)?;
+    warn_std_not_kept(&settings.keep, std_removed_explicitly);
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
     if !no_check && !no_tree_shaking {
@@ -104,6 +106,18 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
         || origin.to_owned(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+/// 実効 keep から std が外れていれば警告する。std の展開はほぼ常に事故で、巨大な出力が黙って
+/// 生成され提出時のサイズ制限まで顕在化しないため、書き忘れ (設定ファイルの `keep` に std を
+/// 挙げ損ねた等) は防護する。一方 CLI の `--no-keep std` は明示された意思なので警告しない。
+fn warn_std_not_kept(keep: &BTreeSet<String>, removed_explicitly: bool) {
+    if keep.contains(STD_ID) || removed_explicitly {
+        return;
+    }
+    eprintln!(
+        "warning: the standard library (`{STD_ID}`) is not in the keep set and will be fully expanded; add \"{STD_ID}\" to `keep` in .risundlerc.toml, or pass `--no-keep {STD_ID}` to make the expansion explicit"
+    );
 }
 
 /// std がバンドル対象のコンパイラ向けに登録されているかを確認し、外れていれば警告する。
@@ -480,6 +494,18 @@ mod tests {
         let cancelled =
             Settings::resolve(&file, None, vec![], vec![], vec![], Some(false)).unwrap();
         assert!(!cancelled.embed);
+    }
+
+    #[test]
+    fn warn_std_not_kept_covers_absence_and_explicit_removal() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        let kept: BTreeSet<String> = ["std".to_owned()].into();
+        // std が keep にある → 警告なし。
+        warn_std_not_kept(&kept, false);
+        // std が無い (書き忘れの可能性) → 警告。
+        warn_std_not_kept(&BTreeSet::new(), false);
+        // --no-keep std の明示 → 意図を尊重して警告なし。
+        warn_std_not_kept(&BTreeSet::new(), true);
     }
 
     #[test]
