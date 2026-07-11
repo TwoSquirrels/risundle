@@ -35,14 +35,15 @@ pub fn run(args: BundleArgs) -> Result<()> {
 
     // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Settings::resolve へ
     // 所有権ごと渡し、設定とのマージで clone せずに済ませる。
+    let embed = args.embed_override();
     let BundleArgs {
         compiler,
         keep,
-        embed,
         no_check,
         no_tree_shaking,
         file,
         options,
+        ..
     } = args;
 
     let settings = Settings::resolve(&file, compiler, options, keep, embed)?;
@@ -145,7 +146,7 @@ impl Settings {
         compiler: Option<PathBuf>,
         options: Vec<String>,
         keep: Vec<String>,
-        embed: bool,
+        embed: Option<bool>,
     ) -> Result<Self> {
         let config = config::resolve(file)?;
         Ok(Self {
@@ -160,7 +161,7 @@ impl Settings {
             } else {
                 keep.into_iter().collect()
             },
-            embed: embed || config.embed,
+            embed: embed.unwrap_or(config.embed),
         })
     }
 }
@@ -432,7 +433,7 @@ mod tests {
             Some(PathBuf::from("my-g++")),
             vec!["-O2".to_owned()],
             vec!["ac-library".to_owned()],
-            true,
+            Some(true),
         )
         .unwrap();
         assert_eq!(cli.compiler, PathBuf::from("my-g++"));
@@ -441,7 +442,7 @@ mod tests {
         assert!(cli.embed);
 
         // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
-        let defaults = Settings::resolve(&file, None, vec![], vec![], false).unwrap();
+        let defaults = Settings::resolve(&file, None, vec![], vec![], None).unwrap();
         let expected = Config::default();
         assert_eq!(defaults.compiler, expected.compiler);
         assert_eq!(defaults.options, expected.options);
@@ -450,5 +451,23 @@ mod tests {
             expected.keep.into_iter().collect::<BTreeSet<_>>()
         );
         assert!(!defaults.embed);
+    }
+
+    #[test]
+    fn no_embed_cancels_the_config_file() {
+        // 設定ファイルの embed = true を、CLI の明示 (--no-embed = Some(false)) が打ち消せる。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[bundle]\nembed = true\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let from_config = Settings::resolve(&file, None, vec![], vec![], None).unwrap();
+        assert!(from_config.embed);
+        let cancelled = Settings::resolve(&file, None, vec![], vec![], Some(false)).unwrap();
+        assert!(!cancelled.embed);
     }
 }

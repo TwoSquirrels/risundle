@@ -13,6 +13,10 @@ use std::path::PathBuf;
     version,
     after_help = "For library management, see `risundle library --help`."
 )]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "CLI フラグの列挙であり、bool の数は引数の数を映しているだけで状態機械の複雑さではない"
+)]
 pub struct BundleArgs {
     /// Path to the compiler to use
     #[arg(short, long)]
@@ -23,8 +27,12 @@ pub struct BundleArgs {
     pub keep: Vec<String>,
 
     /// Embed the original source as a comment at the top
-    #[arg(short, long)]
+    #[arg(short, long, overrides_with = "no_embed")]
     pub embed: bool,
+
+    /// Do not embed the original source (cancels the config file)
+    #[arg(long)]
+    pub no_embed: bool,
 
     /// Skip hash verification of library updates
     #[arg(short = 'n', long = "no-check")]
@@ -40,6 +48,20 @@ pub struct BundleArgs {
     /// Extra options after `--` passed straight to the compiler
     #[arg(last = true, value_name = "COMPILER OPTIONS")]
     pub options: Vec<String>,
+}
+
+impl BundleArgs {
+    /// `--embed` / `--no-embed` は後勝ちのペア。どちらも指定されなければ `None` を返し、
+    /// 設定ファイル (なければ組み込み既定) に委ねる。
+    pub fn embed_override(&self) -> Option<bool> {
+        if self.embed {
+            Some(true)
+        } else if self.no_embed {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
 // エントリポイントで argv の先頭を `risundle library` に差し替えて渡すため、
@@ -113,5 +135,19 @@ mod tests {
     #[test]
     fn hyphen_arguments_before_double_dash_are_rejected() {
         assert!(BundleArgs::try_parse_from(["risundle", "main.cpp", "-O2"]).is_err());
+    }
+
+    #[test]
+    fn embed_pair_resolves_to_the_last_flag() {
+        let parse = |argv: &[&str]| {
+            let argv = [&["risundle", "main.cpp"], argv].concat();
+            BundleArgs::try_parse_from(argv).unwrap().embed_override()
+        };
+        assert_eq!(parse(&[]), None);
+        assert_eq!(parse(&["-e"]), Some(true));
+        assert_eq!(parse(&["--no-embed"]), Some(false));
+        // 後勝ち: 同時指定はコマンドライン上で後にある方が有効。
+        assert_eq!(parse(&["--embed", "--no-embed"]), Some(false));
+        assert_eq!(parse(&["--no-embed", "--embed"]), Some(true));
     }
 }
