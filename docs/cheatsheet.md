@@ -202,7 +202,7 @@ Turn off tree-shaking (everything except kept libraries gets expanded) — that 
 risundle --no-tree-shaking main.cpp > submission.cpp
 ```
 
-If this fixes it, tree-shaking dropped a needed definition (a report in the [issues](https://github.com/TwoSquirrels/risundle/issues) would be much appreciated). To automate this switch, see "[Verify it compiles before submitting](#verify-it-compiles-before-submitting-automatic-fallback)". If it still fails, the library may split declarations and implementations across files (v1.0 supports header-only libraries only).
+If this fixes it, tree-shaking dropped a needed definition. The known gap is implementation files whose target cannot be determined statically (e.g. files defining only free-function operators); anything else would be much appreciated as a report in the [issues](https://github.com/TwoSquirrels/risundle/issues). To automate this switch, see "[Verify it compiles before submitting](#verify-it-compiles-before-submitting-automatic-fallback)". If it still fails, the cause lies outside tree-shaking — trace it directly from the compiler error message.
 
 ### A library you passed to `-k` gets expanded anyway
 
