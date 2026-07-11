@@ -49,7 +49,7 @@ With `--no-config`, no `.risundlerc.toml` is read at all and the behavior is exa
 
 When `std` is not in the effective keep, a warning is printed (expanding `std` is almost always an accident whose huge output only surfaces at submission time). The warning is suppressed when `--no-keep std` was passed explicitly on the CLI, which is taken as intent.
 
-A warning is also printed when the keep (from the configuration file or the CLI) contains an ID that matches no registered library, or when a `--no-keep` ID matched neither the configured keep nor `--keep` — both are no-op instructions. `std` is excluded here, as its absence is covered by the warning above. These are not errors: the configuration file is committed to a repository while library registrations are machine-local state, so unregistered IDs occur structurally right after a clone. The warnings aggregate multiple IDs into one line, do not prevent the output from being produced, and do not change the exit code.
+A warning is also printed when the effective keep contains an ID that matches no registered library, or when a `--no-keep` ID matched neither the configured keep nor `--keep` — both are no-op instructions (a keep ID already cancelled by `--no-keep` triggers neither warning, being a resolved contradiction). `std` is excluded here, as its absence is covered by the warning above. These are not errors: the configuration file is committed to a repository while library registrations are machine-local state, so unregistered IDs occur structurally right after a clone. The warnings aggregate multiple IDs into one line, do not prevent the output from being produced, and do not change the exit code.
 
 ### Library change detection
 
