@@ -129,7 +129,7 @@ From then on, `bundle main.cpp` is all you need. When the fallback fires, check 
 risundle -e main.cpp > submission.cpp
 ```
 
-For judges that publish submissions, when you want readers to see the readable pre-tree-shaking code. If your config file sets `embed = true`, cancel it for one run with `--no-embed`.
+For judges that publish submissions, when you want readers to see the source exactly as you wrote it. If your config file sets `embed = true`, cancel it for one run with `--no-embed`.
 
 ## After touching a library
 
