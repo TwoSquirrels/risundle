@@ -35,17 +35,22 @@ pub fn run(args: BundleArgs) -> Result<()> {
 
     // 設定へ吸収されない CLI 固有の値だけ、この場に残す。残りのフィールドは Settings::resolve へ
     // 所有権ごと渡し、設定とのマージで clone せずに済ませる。
+    let embed = args.embed_override();
     let BundleArgs {
         compiler,
         keep,
-        embed,
+        no_keep,
         no_check,
         no_tree_shaking,
+        no_config,
         file,
         options,
+        ..
     } = args;
 
-    let settings = Settings::resolve(&file, compiler, options, keep, embed)?;
+    let std_removed_explicitly = no_keep.iter().any(|id| id == STD_ID);
+    let settings = Settings::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
+    warn_std_not_kept(&settings.keep, std_removed_explicitly);
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
     if !no_check && !no_tree_shaking {
@@ -104,6 +109,18 @@ fn display_origin(origin: &str, inventory: &Inventory, target_dir: Option<&Path>
     )
 }
 
+/// 実効 keep から std が外れていれば警告する。std の展開はほぼ常に事故で、巨大な出力が黙って
+/// 生成され提出時のサイズ制限まで顕在化しないため、書き忘れ (設定ファイルの `keep` に std を
+/// 挙げ損ねた等) は防護する。一方 CLI の `--no-keep std` は明示された意思なので警告しない。
+fn warn_std_not_kept(keep: &BTreeSet<String>, removed_explicitly: bool) {
+    if keep.contains(STD_ID) || removed_explicitly {
+        return;
+    }
+    eprintln!(
+        "warning: the standard library (`{STD_ID}`) is not kept and will be fully expanded; add \"{STD_ID}\" to `keep` in .risundlerc.toml, or pass `--no-keep {STD_ID}` to make the expansion explicit"
+    );
+}
+
 /// std がバンドル対象のコンパイラ向けに登録されているかを確認し、外れていれば警告する。
 ///
 /// std 未登録、または現在のコンパイラが std の認識集合に無い場合に `add-std` を促す。コンパイラは
@@ -128,8 +145,9 @@ fn warn_std_compiler(compiler: &Path, inventory: &Inventory) {
     }
 }
 
-/// `.risundlerc.toml` の設定に CLI オプションを重ねた実効設定。CLI で明示された項目が設定 (なければ
-/// 組み込みデフォルト) を上書きする。
+/// `.risundlerc.toml` の設定に CLI オプションを重ねた実効設定。重ね方は項目の型ごとに決まる:
+/// スカラー (`compiler`) と bool (`embed`) は CLI 明示が設定を上書きし、集合 (`keep`) は
+/// 設定へ加算した上で `--no-keep` を除き、順序付きリスト (`options`) は設定へ追記する (#24)。
 struct Settings {
     compiler: PathBuf,
     options: Vec<String>,
@@ -138,29 +156,40 @@ struct Settings {
 }
 
 impl Settings {
-    /// CLI で明示された値 (`compiler`・`options`・`keep`・`embed`) を消費して設定と重ね合わせる。
-    /// `file` は設定ファイルの探索起点として借用するだけで、呼び出し側が引き続き所有する。
+    /// CLI で明示された値を消費して設定と重ね合わせる。`file` は設定ファイルの探索起点として
+    /// 借用するだけで、呼び出し側が引き続き所有する。
     fn resolve(
         file: &Path,
+        no_config: bool,
         compiler: Option<PathBuf>,
         options: Vec<String>,
         keep: Vec<String>,
-        embed: bool,
+        no_keep: Vec<String>,
+        embed: Option<bool>,
     ) -> Result<Self> {
-        let config = config::resolve(file)?;
+        // --no-config は「設定ファイルが 1 つも見つからない環境」と完全に同一の挙動と定義する。
+        // これにより、CLI だけで組み込み既定から実効設定を組み立て直せることが常に保証される。
+        let config = if no_config {
+            config::Config::default()
+        } else {
+            config::resolve(file)?
+        };
+        // 実効 keep = (config の keep ∪ --keep) − --no-keep。同じ ID が両方にあれば順序に依らず
+        // --no-keep が勝つ (誤 keep はジャッジで解決できない #include を残す硬い失敗、誤展開は
+        // ファイルが膨らむだけの柔らかい失敗なので、衝突は展開側へ倒す)。
+        let no_keep: BTreeSet<String> = no_keep.into_iter().collect();
         Ok(Self {
             compiler: compiler.unwrap_or(config.compiler),
-            options: if options.is_empty() {
-                config.options
-            } else {
-                options
-            },
-            keep: if keep.is_empty() {
-                config.keep.into_iter().collect()
-            } else {
-                keep.into_iter().collect()
-            },
-            embed: embed || config.embed,
+            // 実効 options = config の options + CLI の options。上書きの意味論はコンパイラの
+            // 後勝ち (-std 等) や -U に委ね、risundle 側では重複や矛盾を解釈しない。
+            options: config.options.into_iter().chain(options).collect(),
+            keep: config
+                .keep
+                .into_iter()
+                .chain(keep)
+                .filter(|id| !no_keep.contains(id))
+                .collect(),
+            embed: embed.unwrap_or(config.embed),
         })
     }
 }
@@ -426,22 +455,28 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        // CLI で明示された値が勝つ。
+        // CLI で明示された値が勝つ (keep は設定への加算、options は設定への追記)。
         let cli = Settings::resolve(
             &file,
+            false,
             Some(PathBuf::from("my-g++")),
-            vec!["-O2".to_owned()],
+            vec!["-O0".to_owned()],
             vec!["ac-library".to_owned()],
-            true,
+            vec![],
+            Some(true),
         )
         .unwrap();
         assert_eq!(cli.compiler, PathBuf::from("my-g++"));
-        assert_eq!(cli.options, vec!["-O2".to_owned()]);
+        let mut expected_options = Config::default().options;
+        expected_options.push("-O0".to_owned());
+        // 追記なので -std=gnu++17 等の既定は生き残り、-O0 は既定の -O2 に後勝ちする。
+        assert_eq!(cli.options, expected_options);
         assert!(cli.keep.contains("ac-library"));
+        assert!(cli.keep.contains("std"), "-k は既定の std を消さない");
         assert!(cli.embed);
 
         // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
-        let defaults = Settings::resolve(&file, None, vec![], vec![], false).unwrap();
+        let defaults = Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
         let expected = Config::default();
         assert_eq!(defaults.compiler, expected.compiler);
         assert_eq!(defaults.options, expected.options);
@@ -450,5 +485,88 @@ mod tests {
             expected.keep.into_iter().collect::<BTreeSet<_>>()
         );
         assert!(!defaults.embed);
+    }
+
+    #[test]
+    fn no_embed_cancels_the_config_file() {
+        // 設定ファイルの embed = true を、CLI の明示 (--no-embed = Some(false)) が打ち消せる。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[bundle]\nembed = true\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let from_config =
+            Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
+        assert!(from_config.embed);
+        let cancelled =
+            Settings::resolve(&file, false, None, vec![], vec![], vec![], Some(false)).unwrap();
+        assert!(!cancelled.embed);
+    }
+
+    #[test]
+    fn no_config_behaves_as_if_no_config_file_exists() {
+        // --no-config は「設定ファイルが 1 つも見つからない環境」と同一挙動、が仕様の定義。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[compiler]\npath = \"clang++\"\noptions = [\"-I/secret\"]\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let isolated = Settings::resolve(&file, true, None, vec![], vec![], vec![], None).unwrap();
+        let expected = Config::default();
+        assert_eq!(isolated.compiler, expected.compiler);
+        assert_eq!(isolated.options, expected.options);
+        assert_eq!(
+            isolated.keep,
+            expected.keep.into_iter().collect::<BTreeSet<_>>()
+        );
+        assert!(!isolated.embed);
+    }
+
+    #[test]
+    fn warn_std_not_kept_covers_absence_and_explicit_removal() {
+        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        let kept: BTreeSet<String> = ["std".to_owned()].into();
+        // std が keep にある → 警告なし。
+        warn_std_not_kept(&kept, false);
+        // std が無い (書き忘れの可能性) → 警告。
+        warn_std_not_kept(&BTreeSet::new(), false);
+        // --no-keep std の明示 → 意図を尊重して警告なし。
+        warn_std_not_kept(&BTreeSet::new(), true);
+    }
+
+    #[test]
+    fn no_keep_subtracts_from_the_keep_set() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+        let resolve = |keep: &[&str], no_keep: &[&str]| {
+            let owned = |ids: &[&str]| ids.iter().map(|&id| (*id).to_owned()).collect();
+            Settings::resolve(
+                &file,
+                false,
+                None,
+                vec![],
+                owned(keep),
+                owned(no_keep),
+                None,
+            )
+            .unwrap()
+            .keep
+        };
+
+        // --no-keep std で、CLI から keep を空にできる (可逆性の回復)。
+        assert!(resolve(&[], &["std"]).is_empty());
+        // 同じ ID が両方にあれば、順序に依らず --no-keep が勝つ。
+        assert!(!resolve(&["std"], &["std"]).contains("std"));
+        // 他の ID には影響しない。
+        assert!(resolve(&["ac-library"], &["std"]).contains("ac-library"));
     }
 }

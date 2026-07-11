@@ -59,17 +59,20 @@ risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]
 | オプション | 説明 |
 | --- | --- |
 | `-c`, `--compiler <PATH>` | 使用するコンパイラ (既定: `g++`) |
-| `-k`, `--keep <ID>` | tree-shaking の対象外にするライブラリ ID (繰り返し可。既定: `std`) |
+| `-k`, `--keep <ID>` | 展開せず `#include` のまま残すライブラリを追加指定する (繰り返し可。既定: `std`) |
+| `--no-keep <ID>` | 維持指定 (keep) からライブラリを外す (繰り返し可。`--keep` より優先) |
 | `--no-tree-shaking` | tree-shaking を無効化し、keep 指定以外をすべて展開する (フォールバック用) |
 | `-e`, `--embed` | 元のソースを先頭にコメントとして埋め込む |
+| `--no-embed` | 元のソースを埋め込まない (設定の `embed = true` を打ち消す) |
 | `-n`, `--no-check` | ライブラリ更新のハッシュ検証をスキップする |
-| `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す |
+| `--no-config` | `.risundlerc.toml` を無視する (設定ファイルが無い時と同じ挙動) |
+| `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す (設定の options への追記) |
 
 `--keep` はライブラリを展開せず `#include` のまま残しますが、`--no-tree-shaking` は keep 指定を除く全ライブラリを展開した上で tree-shaking を行いません。両者は別物で、併用もできます。なお `--no-tree-shaking` は識別子情報を使わないため、ライブラリ更新のハッシュ検証も行いません。
 
 ```bash
-# clang++ を使い、AC Library も展開せず #include のまま残す
-risundle -c clang++ -k std -k ac-library main.cpp > submission.cpp
+# clang++ を使い、AC Library も展開せず #include のまま残す (std は既定で維持される)
+risundle -c clang++ -k ac-library main.cpp > submission.cpp
 
 # コンパイラに追加オプションを渡す
 risundle main.cpp -- -std=gnu++20 -O2
@@ -94,7 +97,7 @@ risundle library <SUBCOMMAND>
 
 ## 設定ファイル
 
-解答ファイルのあるディレクトリから親方向に探索し、最も近い `.risundlerc.toml` を 1 つ採用します (複数ファイルのマージはしません)。CLI オプションが設定ファイルより優先されます。
+解答ファイルのあるディレクトリから親方向に探索し、最も近い `.risundlerc.toml` を 1 つ採用します (複数ファイルのマージはしません)。CLI で明示したオプションが設定ファイルより優先されます: スカラーと bool は上書き、維持指定 (keep) は `--keep` で追加・`--no-keep` で除外、`--` のコンパイラオプションは設定への追記です。`--no-config` を指定すると設定ファイルを無視できます。
 
 ```toml
 [compiler]
