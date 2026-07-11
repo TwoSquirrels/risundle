@@ -579,9 +579,10 @@ mod tests {
             .unwrap()
             .settings;
         assert!(from_config.embed);
-        let cancelled = Resolution::resolve(&file, false, None, vec![], vec![], vec![], Some(false))
-            .unwrap()
-            .settings;
+        let cancelled =
+            Resolution::resolve(&file, false, None, vec![], vec![], vec![], Some(false))
+                .unwrap()
+                .settings;
         assert!(!cancelled.embed);
     }
 
