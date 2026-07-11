@@ -63,7 +63,7 @@ Bundles `<FILE>` and writes the result to standard output.
 | `--no-keep <ID>` | Stop keeping a library (repeatable; beats `--keep`) |
 | `--no-tree-shaking` | Disable tree-shaking and expand everything except kept libraries (useful as a fallback) |
 | `-e`, `--embed` | Embed the original source as a comment at the top |
-| `--no-embed` | Do not embed the original source (cancels the config file) |
+| `--no-embed` | Do not embed the original source (cancels a configured `embed = true`) |
 | `-n`, `--no-check` | Skip the hash verification of library updates |
 | `--no-config` | Ignore any `.risundlerc.toml`, behaving as if none exists |
 | `-- <OPTIONS>...` | Pass everything after `--` straight to the compiler, appended to the configured options |

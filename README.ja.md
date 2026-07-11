@@ -63,7 +63,7 @@ risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]
 | `--no-keep <ID>` | 維持指定 (keep) からライブラリを外す (繰り返し可。`--keep` より優先) |
 | `--no-tree-shaking` | tree-shaking を無効化し、keep 指定以外をすべて展開する (フォールバック用) |
 | `-e`, `--embed` | 元のソースを先頭にコメントとして埋め込む |
-| `--no-embed` | 元のソースを埋め込まない (設定ファイルの指定を打ち消す) |
+| `--no-embed` | 元のソースを埋め込まない (設定の `embed = true` を打ち消す) |
 | `-n`, `--no-check` | ライブラリ更新のハッシュ検証をスキップする |
 | `--no-config` | `.risundlerc.toml` を無視する (設定ファイルが無い時と同じ挙動) |
 | `-- <OPTIONS>...` | `--` 以降をコンパイラへそのまま渡す (設定の options への追記) |
