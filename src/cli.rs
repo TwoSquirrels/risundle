@@ -22,9 +22,13 @@ pub struct BundleArgs {
     #[arg(short, long)]
     pub compiler: Option<PathBuf>,
 
-    /// Library ID to keep out of tree-shaking (can be repeated)
-    #[arg(short, long = "keep")]
+    /// Library ID to add to the keep set, leaving it out of tree-shaking (can be repeated)
+    #[arg(short, long = "keep", value_name = "ID")]
     pub keep: Vec<String>,
+
+    /// Library ID to remove from the keep set (can be repeated; beats --keep)
+    #[arg(long = "no-keep", value_name = "ID")]
+    pub no_keep: Vec<String>,
 
     /// Embed the original source as a comment at the top
     #[arg(short, long, overrides_with = "no_embed")]
