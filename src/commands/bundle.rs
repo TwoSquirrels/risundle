@@ -144,17 +144,16 @@ fn warn_noop_no_keeps(noop_no_keeps: &[String]) {
     if noop_no_keeps.is_empty() {
         return;
     }
-    let ids: Vec<&str> = noop_no_keeps.iter().map(String::as_str).collect();
     eprintln!(
         "warning: `--no-keep` matched no kept library for {}; check the IDs with `risundle library list`",
-        quote_ids(&ids)
+        quote_ids(noop_no_keeps)
     );
 }
 
 /// 警告メッセージ用に ID 列を `` `a`, `b` `` 形式へ整える。
-fn quote_ids(ids: &[&str]) -> String {
+fn quote_ids<S: AsRef<str>>(ids: &[S]) -> String {
     ids.iter()
-        .map(|id| format!("`{id}`"))
+        .map(|id| format!("`{}`", id.as_ref()))
         .collect::<Vec<_>>()
         .join(", ")
 }
