@@ -42,13 +42,14 @@ pub fn run(args: BundleArgs) -> Result<()> {
         no_keep,
         no_check,
         no_tree_shaking,
+        no_config,
         file,
         options,
         ..
     } = args;
 
     let std_removed_explicitly = no_keep.iter().any(|id| id == STD_ID);
-    let settings = Settings::resolve(&file, compiler, options, keep, no_keep, embed)?;
+    let settings = Settings::resolve(&file, no_config, compiler, options, keep, no_keep, embed)?;
     warn_std_not_kept(&settings.keep, std_removed_explicitly);
     let inventory = Inventory::load(&store, &settings.keep)?;
     warn_std_compiler(&settings.compiler, &inventory);
@@ -159,13 +160,20 @@ impl Settings {
     /// 借用するだけで、呼び出し側が引き続き所有する。
     fn resolve(
         file: &Path,
+        no_config: bool,
         compiler: Option<PathBuf>,
         options: Vec<String>,
         keep: Vec<String>,
         no_keep: Vec<String>,
         embed: Option<bool>,
     ) -> Result<Self> {
-        let config = config::resolve(file)?;
+        // --no-config は「設定ファイルが 1 つも見つからない環境」と完全に同一の挙動と定義する。
+        // これにより、CLI だけで組み込み既定から実効設定を組み立て直せることが常に保証される。
+        let config = if no_config {
+            config::Config::default()
+        } else {
+            config::resolve(file)?
+        };
         // 実効 keep = (config の keep ∪ --keep) − --no-keep。同じ ID が両方にあれば順序に依らず
         // --no-keep が勝つ (誤 keep はジャッジで解決できない #include を残す硬い失敗、誤展開は
         // ファイルが膨らむだけの柔らかい失敗なので、衝突は展開側へ倒す)。
@@ -450,6 +458,7 @@ mod tests {
         // CLI で明示された値が勝つ (keep は設定への加算、options は設定への追記)。
         let cli = Settings::resolve(
             &file,
+            false,
             Some(PathBuf::from("my-g++")),
             vec!["-O0".to_owned()],
             vec!["ac-library".to_owned()],
@@ -467,7 +476,7 @@ mod tests {
         assert!(cli.embed);
 
         // CLI 省略時は設定 (.risundlerc.toml が無いここでは組み込みデフォルト) が生きる。
-        let defaults = Settings::resolve(&file, None, vec![], vec![], vec![], None).unwrap();
+        let defaults = Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
         let expected = Config::default();
         assert_eq!(defaults.compiler, expected.compiler);
         assert_eq!(defaults.options, expected.options);
@@ -490,11 +499,35 @@ mod tests {
         let file = temp.path().join("main.cpp");
         std::fs::write(&file, "int main() {}").unwrap();
 
-        let from_config = Settings::resolve(&file, None, vec![], vec![], vec![], None).unwrap();
+        let from_config =
+            Settings::resolve(&file, false, None, vec![], vec![], vec![], None).unwrap();
         assert!(from_config.embed);
         let cancelled =
-            Settings::resolve(&file, None, vec![], vec![], vec![], Some(false)).unwrap();
+            Settings::resolve(&file, false, None, vec![], vec![], vec![], Some(false)).unwrap();
         assert!(!cancelled.embed);
+    }
+
+    #[test]
+    fn no_config_behaves_as_if_no_config_file_exists() {
+        // --no-config は「設定ファイルが 1 つも見つからない環境」と同一挙動、が仕様の定義。
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join(".risundlerc.toml"),
+            "[compiler]\npath = \"clang++\"\noptions = [\"-I/secret\"]\n",
+        )
+        .unwrap();
+        let file = temp.path().join("main.cpp");
+        std::fs::write(&file, "int main() {}").unwrap();
+
+        let isolated = Settings::resolve(&file, true, None, vec![], vec![], vec![], None).unwrap();
+        let expected = Config::default();
+        assert_eq!(isolated.compiler, expected.compiler);
+        assert_eq!(isolated.options, expected.options);
+        assert_eq!(
+            isolated.keep,
+            expected.keep.into_iter().collect::<BTreeSet<_>>()
+        );
+        assert!(!isolated.embed);
     }
 
     #[test]
@@ -516,9 +549,17 @@ mod tests {
         std::fs::write(&file, "int main() {}").unwrap();
         let resolve = |keep: &[&str], no_keep: &[&str]| {
             let owned = |ids: &[&str]| ids.iter().map(|&id| (*id).to_owned()).collect();
-            Settings::resolve(&file, None, vec![], owned(keep), owned(no_keep), None)
-                .unwrap()
-                .keep
+            Settings::resolve(
+                &file,
+                false,
+                None,
+                vec![],
+                owned(keep),
+                owned(no_keep),
+                None,
+            )
+            .unwrap()
+            .keep
         };
 
         // --no-keep std で、CLI から keep を空にできる (可逆性の回復)。

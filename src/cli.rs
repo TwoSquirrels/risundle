@@ -46,6 +46,10 @@ pub struct BundleArgs {
     #[arg(long = "no-tree-shaking")]
     pub no_tree_shaking: bool,
 
+    /// Ignore any .risundlerc.toml, behaving as if none exists
+    #[arg(long = "no-config")]
+    pub no_config: bool,
+
     /// C++ source file to bundle
     pub file: PathBuf,
 
