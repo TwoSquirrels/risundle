@@ -36,7 +36,18 @@ See the README for the full list of options. The following are the behavioral de
 
 ### Resolving configuration
 
-Searches from the directory of `<file>` toward its parents for `.risundlerc.toml` and uses only the single nearest one as defaults (no merging even if multiple exist). CLI options take precedence over the configuration file. Items present in neither are filled in with the built-in defaults (`compiler = g++`, `options = ["-std=gnu++17", "-O2", "-DONLINE_JUDGE", "-DATCODER"]`, `keep = ["std"]`, `embed = false`).
+Searches from the directory of `<file>` toward its parents for `.risundlerc.toml` and uses only the single nearest one as defaults (no merging even if multiple exist). Items omitted in the configuration file are filled in with the built-in defaults (`compiler = g++`, `options = ["-std=gnu++17", "-O2", "-DONLINE_JUDGE", "-DATCODER"]`, `keep = ["std"]`, `embed = false`). Each item in the configuration file is a declarative, complete value and is not merged with the defaults (writing `keep = ["ac-library"]` does not include the default `std`).
+
+How CLI options are layered on top depends on the type of the item.
+
+- `compiler` (scalar) — the CLI `--compiler` overrides the configuration.
+- `embed` (bool) — `--embed` / `--no-embed` are a last-wins pair, overriding the configuration only when given explicitly.
+- `keep` (set) — effective keep = (configured keep ∪ `--keep`) − `--no-keep`. When the same ID appears in both, `--no-keep` wins regardless of order.
+- `options` (ordered list) — effective options = configured options + the CLI options after `--`. Overriding between flags of the same kind is delegated to the compiler's own last-wins rules (`-std` etc.) and `-U`; risundle does not interpret them.
+
+With `--no-config`, no `.risundlerc.toml` is read at all and the behavior is exactly identical to an environment where no configuration file is found. This guarantees that the effective settings can always be rebuilt from the built-in defaults through the CLI alone.
+
+When `std` is not in the effective keep, a warning is printed (expanding `std` is almost always an accident whose huge output only surfaces at submission time). The warning is suppressed when `--no-keep std` was passed explicitly on the CLI, which is taken as intent.
 
 ### Library change detection
 

@@ -77,10 +77,18 @@ oj t && risundle main.cpp > submission.cpp && oj s submission.cpp
 Example: the judge provides AC Library, so you don't want it embedded.
 
 ```bash
-risundle -k std -k ac-library main.cpp > submission.cpp
+risundle -k ac-library main.cpp > submission.cpp
 ```
 
-`-k` takes the ID you used at registration. Specifying `-k` even once overrides the default `keep = ["std"]`, so pass `-k std` alongside it (forget it and the standard library gets expanded too). Also write the includes in your solution with angle brackets like `#include <atcoder/dsu>`, not `#include "..."` (with `"..."` the keep may not take effect).
+`-k` takes the ID you used at registration. `-k` is additive, so std stays kept by default. Also write the includes in your solution with angle brackets like `#include <atcoder/dsu>`, not `#include "..."` (with `"..."` the keep may not take effect).
+
+### Expand a kept library just this once
+
+```bash
+risundle --no-keep ac-library main.cpp > submission.cpp
+```
+
+`--no-keep` beats both the config file and `-k`, so the library gets expanded.
 
 ### Process with the same compiler and flags as the judge
 
@@ -121,7 +129,7 @@ From then on, `bundle main.cpp` is all you need. When the fallback fires, check 
 risundle -e main.cpp > submission.cpp
 ```
 
-For judges that publish submissions, when you want readers to see the readable pre-tree-shaking code.
+For judges that publish submissions, when you want readers to see the readable pre-tree-shaking code. If your config file sets `embed = true`, cancel it for one run with `--no-embed`.
 
 ## After touching a library
 
@@ -171,7 +179,9 @@ options = ["-std=gnu++20", "-O2", "-DONLINE_JUDGE", "-DATCODER"]
 keep = ["std", "ac-library"]
 ```
 
-CLI options take precedence when both are given.
+CLI options take precedence when both are given (`-k` adds to the configured keeps, and options after `--` are appended to the configured ones). Add `--no-config` to ignore the file entirely.
+
+When you write `keep` yourself, list `"std"` alongside the rest. Forget it and the standard library gets expanded too (risundle prints a warning when that happens).
 
 ## When things go wrong
 
@@ -198,9 +208,9 @@ If this fixes it, tree-shaking dropped a needed definition (a report in the [iss
 
 Are you writing the include as `#include "atcoder/dsu"`? Switch to the angle-bracket form `#include <atcoder/dsu>`.
 
-### Adding `-k` made the standard library get expanded too
+### The standard library got expanded too
 
-Specifying `-k` overrides the default `keep = ["std"]`. Pass `-k std` alongside it.
+std is missing from the effective keeps. The typical cause is a config file whose `keep` forgets to list `"std"` (writing `keep` yourself replaces the default). Add `"std"` to `keep` in `.risundlerc.toml`. risundle also prints a warning in this situation.
 
 ### Error line numbers don't match the original file
 

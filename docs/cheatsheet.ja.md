@@ -76,10 +76,18 @@ oj t && risundle main.cpp > submission.cpp && oj s submission.cpp
 例: AC Library がジャッジ側にあるので埋め込みたくない。
 
 ```bash
-risundle -k std -k ac-library main.cpp > submission.cpp
+risundle -k ac-library main.cpp > submission.cpp
 ```
 
-`-k` に渡すのは登録時の ID です。`-k` を 1 つでも指定すると既定の `keep = ["std"]` は上書きされるため、`-k std` も一緒に指定してください (忘れると標準ライブラリまで展開されます)。このとき解答側の include は `#include "..."` ではなく `#include <atcoder/dsu>` のような山括弧で書いてください (`"..."` だと keep が効かないことがあります)。
+`-k` に渡すのは登録時の ID です。`-k` は「追加」なので、既定で維持される std はそのまま残ります。このとき解答側の include は `#include "..."` ではなく `#include <atcoder/dsu>` のような山括弧で書いてください (`"..."` だと keep が効かないことがあります)。
+
+### keep しているライブラリを今回だけ展開したい
+
+```bash
+risundle --no-keep ac-library main.cpp > submission.cpp
+```
+
+設定ファイルや `-k` で維持指定していても、`--no-keep` が優先されて展開されます。
 
 ### ジャッジと同じコンパイラ・同じフラグで処理したい
 
@@ -120,7 +128,7 @@ bundle() {
 risundle -e main.cpp > submission.cpp
 ```
 
-コードを公開するジャッジで、tree-shaking 前の読みやすいコードを見せたいときに。
+コードを公開するジャッジで、tree-shaking 前の読みやすいコードを見せたいときに。設定ファイルで `embed = true` を常用している場合は、`--no-embed` で今回だけ打ち消せます。
 
 ## ライブラリを触ったらやること
 
@@ -170,7 +178,9 @@ options = ["-std=gnu++20", "-O2", "-DONLINE_JUDGE", "-DATCODER"]
 keep = ["std", "ac-library"]
 ```
 
-CLI オプションを併用した場合はそちらが優先されます。
+CLI オプションを併用した場合はそちらが優先されます (`-k` は設定への追加、`--` のコンパイラオプションは設定への追記になります)。設定ファイルを無視したいときは `--no-config` を付けてください。
+
+なお `keep` を自分で書くときは `"std"` も一緒に並べてください。書き忘れると標準ライブラリまで展開されます (その場合は risundle が警告を出します)。
 
 ## うまくいかないとき
 
@@ -197,9 +207,9 @@ risundle --no-tree-shaking main.cpp > submission.cpp
 
 解答側の include を `#include "atcoder/dsu"` のような `"..."` 形式で書いていませんか。`#include <atcoder/dsu>` の山括弧形式に変えてください。
 
-### `-k` を付けたら標準ライブラリまで展開されるようになった
+### 標準ライブラリまで展開されてしまう
 
-`-k` の指定は既定の `keep = ["std"]` を上書きします。`-k std` を並べて指定してください。
+維持指定 (keep) に std が入っていません。典型は設定ファイルの `keep` に `"std"` を書き忘れているケースです (`keep` を自分で書くと既定値は使われません)。`.risundlerc.toml` の `keep` に `"std"` を足してください。この状態では risundle も警告を出します。
 
 ### エラーメッセージの行番号が元のファイルと合わない
 

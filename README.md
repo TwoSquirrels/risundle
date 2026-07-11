@@ -59,17 +59,20 @@ Bundles `<FILE>` and writes the result to standard output.
 | Option | Description |
 | --- | --- |
 | `-c`, `--compiler <PATH>` | Compiler to use (default: `g++`) |
-| `-k`, `--keep <ID>` | Library ID to exclude from tree-shaking (repeatable; default: `std`) |
+| `-k`, `--keep <ID>` | Also keep a library unexpanded, out of tree-shaking (repeatable; default: `std`) |
+| `--no-keep <ID>` | Stop keeping a library (repeatable; beats `--keep`) |
 | `--no-tree-shaking` | Disable tree-shaking and expand everything except kept libraries (useful as a fallback) |
 | `-e`, `--embed` | Embed the original source as a comment at the top |
+| `--no-embed` | Do not embed the original source (cancels the config file) |
 | `-n`, `--no-check` | Skip the hash verification of library updates |
-| `-- <OPTIONS>...` | Pass everything after `--` straight to the compiler |
+| `--no-config` | Ignore any `.risundlerc.toml`, behaving as if none exists |
+| `-- <OPTIONS>...` | Pass everything after `--` straight to the compiler, appended to the configured options |
 
 `--keep` leaves a library unexpanded as an `#include`, whereas `--no-tree-shaking` expands every library except the kept ones but performs no tree-shaking. The two are different and can be combined. Note that `--no-tree-shaking` also skips the hash verification of library updates, since it uses no identifier information.
 
 ```bash
-# Use clang++ and leave AC Library unexpanded, keeping it as #include
-risundle -c clang++ -k std -k ac-library main.cpp > submission.cpp
+# Use clang++ and leave AC Library unexpanded too (std stays kept by default)
+risundle -c clang++ -k ac-library main.cpp > submission.cpp
 
 # Pass extra options to the compiler
 risundle main.cpp -- -std=gnu++20 -O2
@@ -94,7 +97,7 @@ risundle library <SUBCOMMAND>
 
 ## Configuration file
 
-risundle searches from the directory of the solution file toward its parents and adopts the single nearest `.risundlerc.toml` (it does not merge multiple files). CLI options take precedence over the configuration file.
+risundle searches from the directory of the solution file toward its parents and adopts the single nearest `.risundlerc.toml` (it does not merge multiple files). Explicit CLI options take precedence over the configuration file: scalars and booleans are overridden, `--keep` and `--no-keep` add and remove kept libraries, and options after `--` are appended to the configured ones. `--no-config` ignores the file entirely.
 
 ```toml
 [compiler]
