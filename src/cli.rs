@@ -35,7 +35,7 @@ pub struct BundleArgs {
     pub embed: bool,
 
     /// Do not embed the original source (cancels the config file)
-    #[arg(long)]
+    #[arg(long, overrides_with = "embed")]
     pub no_embed: bool,
 
     /// Skip hash verification of library updates
