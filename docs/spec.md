@@ -83,6 +83,7 @@ Qualifiers whose target cannot be determined statically (decltype, dependent nam
 - The first line carries the credit `// Bundled with risundle v<version>`.
 - With `--embed`, the original source is attached afterward as `// ` comments.
 - The body contains `#line` directives indicating origins (so that post-bundle compiler diagnostics point to the lines in the original files). Kept libraries are restored to `#include` (angle-bracket form), while other used headers remain as expanded code.
+- Lines consumed by preprocessing — macro definitions, untaken `#ifdef` branches, and the like — leave blank lines behind, but a run never exceeds 8 lines. The preprocessor fills gaps longer than 8 lines with a linemarker instead of blank lines, which risundle converts into a single `#line` directive, so macro-heavy sources do not bloat the output with blank lines.
 
 ### Known limitation
 
