@@ -59,6 +59,23 @@ jobs:
     env:
       RISUNDLE_TEST_COMPILER: ${{ matrix.compiler }}
     steps:
+      # Windows では std ダミーツリー生成 (数千個の小ファイル書き込み) が Defender の
+      # リアルタイムスキャンに捕まり、テストが桁違いに遅くなる (#58)。使い捨てランナーなので、
+      # ワークスペース・一時ディレクトリ・cargo キャッシュをスキャン対象から外す。
+      # ランナーの TEMP は 8.3 短縮形 (RUNNER~1) で入っており実パスと照合されない恐れがあるため、
+      # 同じ場所を指す長い表記 (LOCALAPPDATA\Temp) も並べて除外する。
+      - name: Exclude build directories from Windows Defender
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: powershell
+        run: |
+          Add-MpPreference -ExclusionPath @(
+            $env:GITHUB_WORKSPACE,
+            $env:RUNNER_TEMP,
+            $env:TEMP,
+            (Join-Path $env:LOCALAPPDATA 'Temp'),
+            (Join-Path $env:USERPROFILE '.cargo')
+          )
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: recursive
