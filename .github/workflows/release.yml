@@ -77,9 +77,27 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --locked
 
+  # リリースの作成とノート生成はここで 1 回だけ行う。binaries の matrix 側に持たせると、
+  # ジョブの数だけノートが重複して追記される (#52)。
+  release:
+    name: create GitHub release
+    needs: [validate, publish]
+    if: needs.validate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # 部分失敗後の re-run でも通るよう、既存リリースがあれば作成をスキップする。
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+
   binaries:
     name: binary (${{ matrix.target }})
-    needs: [validate, publish]
+    needs: [validate, release]
     if: needs.validate.outputs.release == 'true'
     runs-on: ${{ matrix.os }}
     permissions:
@@ -119,8 +137,9 @@ jobs:
           Compress-Archive -Path "target/${{ matrix.target }}/release/risundle.exe" -DestinationPath "$name.zip"
           "ASSET=$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # --clobber は re-run 時の同名アセットの置き換え用。
       - name: Upload to release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
-        with:
-          files: ${{ env.ASSET }}
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" "$ASSET" --repo "$GITHUB_REPOSITORY" --clobber
