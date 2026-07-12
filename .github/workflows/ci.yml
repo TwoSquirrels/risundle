@@ -66,6 +66,7 @@ jobs:
       # 同じ場所を指す長い表記 (LOCALAPPDATA\Temp) も並べて除外する。
       - name: Exclude build directories from Windows Defender
         if: runner.os == 'Windows'
+        continue-on-error: true
         shell: powershell
         run: |
           Add-MpPreference -ExclusionPath @(
