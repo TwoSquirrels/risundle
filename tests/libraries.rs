@@ -90,8 +90,7 @@ fn ac_library_dsu_bundles_compiles_and_runs() {
 
 #[test]
 fn ac_library_keeps_only_the_structures_in_use() {
-    // 同一ライブラリから 2 つの構造 (dsu と fenwick_tree) を使い、使っていない segtree が
-    // 混ざらないこと、つまり tree-shaking が構造単位で正しく選別することを確かめる。
+    // dsu と fenwick_tree の 2 構造を使い、未使用の segtree が構造単位で正しく除外されることを確かめる。
     let source = "#include <atcoder/dsu>\n#include <atcoder/fenwicktree>\n#include <cstdio>\n\
         int main() {\n\
         \x20 atcoder::dsu d(5);\n\

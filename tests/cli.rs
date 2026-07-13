@@ -360,7 +360,7 @@ fn bundle_keeps_transitively_required_headers() {
 #[test]
 fn bundle_ignores_identifiers_in_comments_and_strings() {
     let sandbox = Sandbox::new();
-    // メソッド名を分け、識別子の逆引き衝突を避ける (両者が `value()` を共有すると巻き込まれる)。
+    // メソッド名を分ける理由は used_and_unused_library と同じ (逆引きの衝突回避)。
     let real = sandbox.write(
         "mylib/real.hpp",
         "#pragma once\nstruct Real { int real_value() const { return 5; } };\n",
@@ -443,7 +443,7 @@ fn embed_includes_original_source_as_comment() {
 fn broken_pipe_while_writing_output_does_not_panic() {
     // 出力先パイプを OS のバッファ (Linux で既定 64KiB) より前に閉じ、`| head` のような早期打ち切りを
     // 再現する。main.cpp 自身をコメントで肥大化させ、ライブラリや特定コンパイラの機能に頼らずに
-    // 出力サイズを稼ぐ (#62)。
+    // 出力サイズを稼ぐ。
     let sandbox = Sandbox::new();
     let filler = "// filler\n".repeat(20_000);
     sandbox.write("main.cpp", &format!("{filler}int main() {{ return 0; }}\n"));
@@ -500,7 +500,7 @@ fn bundle_detects_library_changes_unless_verification_is_bypassed() {
         .failure()
         .stderr(predicate::str::contains("has changed since registration"));
 
-    // --no-check ならハッシュ検証を飛ばして通る。
+    // --no-check は検証自体をスキップする明示指定なので、ハッシュが食い違っていても通る。
     sandbox
         .bundle_command()
         .args(["-k", STD, "--no-check", "main.cpp"])
