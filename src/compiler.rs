@@ -68,12 +68,16 @@ fn existing_executable(candidate: PathBuf) -> Option<PathBuf> {
 ///
 /// `-v` 付きプリプロセスの標準エラーに出る探索リストを解析する。`CPATH` 等の環境変数は探索パスを
 /// 汚染する (ユーザーのライブラリが紛れる) ため取り除き、コンパイラ本来のシステム dir だけを得る。
+/// `parse_search_dirs` が探す目印文字列は英語固定なので、`LC_ALL`/`LANGUAGE` を `C` に固定し、
+/// 非英語ロケール環境でも gcc/clang の診断メッセージが翻訳されないようにする。
 pub fn system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
     let output = Command::new(compiler)
         .args(["-E", "-x", "c++", "-v", "-"])
         .env_remove("CPATH")
         .env_remove("C_INCLUDE_PATH")
         .env_remove("CPLUS_INCLUDE_PATH")
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
