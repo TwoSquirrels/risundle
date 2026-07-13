@@ -614,7 +614,8 @@ mod tests {
 
     #[test]
     fn warn_unregistered_keeps_skips_std_and_registered_ids() {
-        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        // 戻り値を持たない警告関数のテスト方針は warn_std_compiler_handles_every_registration_state
+        // を参照。
         let local = TempDir::new().unwrap();
         let store = store_in(&local);
         let inventory = empty_inventory(&store);
@@ -635,7 +636,8 @@ mod tests {
 
     #[test]
     fn warn_std_not_kept_covers_absence_and_explicit_removal() {
-        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        // 戻り値を持たない警告関数のテスト方針は warn_std_compiler_handles_every_registration_state
+        // を参照。
         let kept: BTreeSet<String> = ["std".to_owned()].into();
         // std が keep にある → 警告なし。
         warn_std_not_kept(&kept, false);
@@ -727,7 +729,8 @@ mod tests {
 
     #[test]
     fn warn_noop_no_keeps_only_fires_on_leftovers() {
-        // 警告は標準エラーへの出力のみで戻り値を持たないため、各経路が落ちずに通ることを確かめる。
+        // 戻り値を持たない警告関数のテスト方針は warn_std_compiler_handles_every_registration_state
+        // を参照。
         warn_noop_no_keeps(&[]);
         warn_noop_no_keeps(&["ac-libary".to_owned()]);
     }

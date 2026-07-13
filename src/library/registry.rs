@@ -196,10 +196,9 @@ pub fn auto_migrate(store: &LocalStore) -> Result<()> {
 ///
 /// [`Registration`] はスキーマ検証をせず読むため、旧スキーマの登録からでも回復できる。std は
 /// コンパイラ集合を、通常ライブラリは登録パス (または明示された `path`) を種にして作り直す。
-// std と通常ライブラリで作り直し方が根本的に異なり、どちらも同じ重みの分岐なので match の対称性を保つ。
 #[expect(
     clippy::single_match_else,
-    reason = "両アームが同格の分岐であり if let/else より match が読みやすい"
+    reason = "std と通常ライブラリで作り直し方が根本的に異なり、同格の分岐として match の対称性を保つ方が読みやすい"
 )]
 pub fn reregister(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     let reg = Registration::load(&store.tags_json(id)?)?;

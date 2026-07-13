@@ -73,10 +73,9 @@ fn delete(store: &LocalStore, id: &str) -> Result<()> {
 
 /// `id` 省略時は登録済みの全ライブラリを更新する。`path` を伴う省略は clap の positional 順序上
 /// 起こり得ない (`path` は `id` の後ろにしか来ない)。
-// 単発更新と全件更新は同じ重みを持つ枝なので、else に押し込めるより match の対称性を保つ方が読みやすい。
 #[expect(
     clippy::single_match_else,
-    reason = "両アームが同格の分岐であり if let/else より match が読みやすい"
+    reason = "単発更新と全件更新は同格の分岐であり、else に押し込めるより match の対称性を保つ方が読みやすい"
 )]
 fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<()> {
     match id {
