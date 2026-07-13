@@ -443,7 +443,7 @@ fn embed_includes_original_source_as_comment() {
 fn broken_pipe_while_writing_output_does_not_panic() {
     // 出力先パイプを OS のバッファ (Linux で既定 64KiB) より前に閉じ、`| head` のような早期打ち切りを
     // 再現する。main.cpp 自身をコメントで肥大化させ、ライブラリや特定コンパイラの機能に頼らずに
-    // 出力サイズを稼ぐ (#62)。
+    // 出力サイズを稼ぐ。
     let sandbox = Sandbox::new();
     let filler = "// filler\n".repeat(20_000);
     sandbox.write("main.cpp", &format!("{filler}int main() {{ return 0; }}\n"));

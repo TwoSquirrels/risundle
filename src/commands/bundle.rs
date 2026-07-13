@@ -138,8 +138,8 @@ fn warn_unregistered_keeps(keep: &BTreeSet<String>, inventory: &Inventory) {
     );
 }
 
-/// 何も除外しなかった `--no-keep` を警告する。[`warn_unregistered_keeps`] と同じ no-op 検出
-/// (#31)。こちらの typo は「keep されたまま `#include` が残り、提出先で初めて壊れる」という
+/// 何も除外しなかった `--no-keep` を警告する。[`warn_unregistered_keeps`] と同じ no-op 検出だが、
+/// こちらの typo は「keep されたまま `#include` が残り、提出先で初めて壊れる」という
 /// keep 側の typo (展開されるだけ) より硬い失敗につながるため、見逃さない。
 fn warn_noop_no_keeps(noop_no_keeps: &[String]) {
     if noop_no_keeps.is_empty() {
@@ -211,7 +211,7 @@ struct Settings {
 struct Resolution {
     settings: Settings,
     /// (config の keep ∪ `--keep`) のどれにも一致せず何も除外しなかった `--no-keep` の ID
-    /// (重複排除・昇順、std は対象外)。no-op 警告 (#31) の材料で、バンドル処理では使わない。
+    /// (重複排除・昇順、std は対象外)。no-op 警告の材料で、バンドル処理では使わない。
     noop_no_keeps: Vec<String>,
     /// CLI で `--no-keep std` が明示されたか。[`warn_std_not_kept`] の抑制に使う。
     std_removed_explicitly: bool,
