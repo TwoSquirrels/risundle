@@ -22,8 +22,10 @@ src/
     dummy.rs         維持ライブラリのダミー生成
     identifiers.rs   tree-sitter による識別子抽出
     testutil.rs      テスト専用の共有補助 (ソース木・ストア・偽コンパイラの組み立て。cfg(test) 限定)
-  fs/                汎用ファイル走査 (walk / source / relpath)
+  fs/                汎用ファイル走査 (walk / source / relpath / which)
   compiler.rs        コンパイラへの問い合わせ (絶対パス解決・システム include パス検出)
+  output.rs          標準出力への書き込み (broken pipe を黙って正常終了させる)
+  update_check.rs    risundle 本体の更新チェック (crates.io 問い合わせ・キャッシュ)
   bundle/            tree-shaking の純粋ロジック (コンパイラ起動・IO は commands/bundle.rs)
     inventory.rs     登録ライブラリの突き合わせ (-I 組立・逆引き・分類・ハッシュ検証)
     linemarker.rs    プリプロセス出力の linemarker 解析と行の出所追跡
@@ -32,7 +34,7 @@ src/
     rewrite.rs       不要行の削除とダミー pragma の #include 復元
 ```
 
-依存は内向き一方向で、循環しない。矢印は「依存してよい相手」で、ここに無い依存は持たない (`fs` と `compiler` は何にも依存しない終端):
+依存は内向き一方向で、循環しない。矢印は「依存してよい相手」で、ここに無い依存は持たない (`fs`・`compiler`・`output` は何にも依存しない終端):
 
 ```mermaid
 graph LR
@@ -41,19 +43,25 @@ graph LR
   commands --> library
   commands --> compiler
   commands --> fs
+  commands --> output
+  commands --> update_check
   bundle --> library
   bundle --> fs
   library --> fs
   library --> compiler
+  update_check --> library
+  update_check --> fs
 ```
 
 各モジュールの役割と、そこに置く理由は次のとおり。
 
-- `fs` は何にも依存しない走査ユーティリティで、`library` と `bundle` が共有する。
+- `fs` は何にも依存しない走査ユーティリティで、`library` と `bundle` (と `update_check`) が共有する。PATH 上の実行可能ファイル探索 (`which`) も、コンパイラ解決と更新チェックの両方が使うためここに置く。
 - `compiler` も同じ立ち位置の共有の道具。コンパイラへの問い合わせは登録 (システム include パスの検出) とバンドル (警告時の照合) のどちらにも属さないので、`library` に埋めず `fs` と並べる。
+- `output` も同様に依存ゼロの共有の道具。標準出力への書き込みは登録にもバンドルにも属さない横断的な関心事なので、`commands/` の複数箇所 (`bundle.rs`・`library.rs`) が共有する。
 - `library` は走査を `fs` に、コンパイラへの問い合わせを `compiler` に委ね、登録済みライブラリの表現・永続化・登録処理 (`registry`) を担う。
 - `bundle` は `library` の tags.json を逆引きに使うため `library` に依存する。
 - `identifiers` ・ `dummy` は登録専用なので `library` 内に置く。`bundle` は使わない。
+- `update_check` は `library` サブコマンド実行時にだけ発動する、risundle 本体の更新チェック。`library::local::LocalStore` で `$LOCAL` のパス解決を借りるが、登録処理そのものとは無関係な横断的関心事なので `library` の外に独立させる。バンドルの実行経路 (`commands/bundle.rs`) には依存されない。
 
 ## IO の置き場所は処理の性質で決める
 

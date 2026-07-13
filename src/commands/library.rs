@@ -14,6 +14,7 @@ use crate::output;
 
 pub fn run(command: LibraryCommand) -> Result<()> {
     let store = LocalStore::discover()?;
+    crate::update_check::check(&store);
     match command {
         LibraryCommand::Add { id, path } => add(&store, &id, &path),
         LibraryCommand::AddStd { compiler } => add_std(&store, compiler.as_deref()),

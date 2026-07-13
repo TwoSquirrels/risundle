@@ -6,6 +6,7 @@ mod config;
 mod fs;
 mod library;
 mod output;
+mod update_check;
 
 use std::ffi::OsString;
 
