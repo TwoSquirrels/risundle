@@ -34,7 +34,7 @@ You can use [cargo-update](https://crates.io/crates/cargo-update) to upgrade.
 cargo install-update risundle
 ```
 
-Running `risundle library` (a subcommand) prints a one-line notice to stderr when a newer version is available (bundling itself, i.e. running `risundle` directly, never does). Set `RISUNDLE_NO_UPDATE_CHECK` to disable it.
+Running `risundle library` (a subcommand) prints a short notice to stderr when a newer version is available (bundling itself, i.e. running `risundle` directly, never does). Set `RISUNDLE_NO_UPDATE_CHECK` to disable it.
 
 ## Quick start
 

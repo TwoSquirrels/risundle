@@ -78,7 +78,7 @@ fn update_message(store: &LocalStore, base_url: &str) -> Option<String> {
         "cargo install risundle --force"
     };
     Some(format!(
-        "note: a newer risundle version is available ({current} -> {latest}); run `{command}` to upgrade"
+        "note: a newer risundle version is available ({current} -> {latest})\n      to upgrade, run: {command}"
     ))
 }
 

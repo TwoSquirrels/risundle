@@ -33,7 +33,7 @@ This document goes deeper than the README, covering each command's behavior, err
 
 ### Update check
 
-Every `library` subcommand checks crates.io for the latest stable release (excluding pre-releases) of risundle itself before doing its actual work, and prints a one-line notice to stderr if it's newer than the current version. This never happens on the bundling path (`risundle <file>`).
+Every `library` subcommand checks crates.io for the latest stable release (excluding pre-releases) of risundle itself before doing its actual work, and prints a short notice to stderr if it's newer than the current version. This never happens on the bundling path (`risundle <file>`).
 
 - The check time and latest version are cached in `$LOCAL/latest_version_cache.json`, and re-checked at most once every 24 hours. A missing, corrupt, or expired cache is all treated as "no cache" rather than an error, since it's a pure cache: if it can't be read, silently rebuilding it is enough.
 - Network failures, timeouts, and malformed responses are things the user can't act on, so they're silently ignored — neither an error nor a warning.
