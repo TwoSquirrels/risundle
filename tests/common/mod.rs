@@ -109,10 +109,15 @@ impl Sandbox {
     }
 
     /// `RISUNDLE_DATA_HOME` と作業ディレクトリを束ねた risundle コマンドを返す。
+    ///
+    /// `RISUNDLE_NO_UPDATE_CHECK` も併せて設定し、`library` サブコマンドを叩くたびに本物の
+    /// crates.io へ問い合わせてしまうのを防ぐ (更新チェック自体のテストは update_check.rs 側の
+    /// 単体テストが担う)。
     pub fn risundle(&self) -> Command {
         let mut command = Command::cargo_bin("risundle").expect("locate risundle binary");
         command
             .env("RISUNDLE_DATA_HOME", self.data.path())
+            .env("RISUNDLE_NO_UPDATE_CHECK", "1")
             .current_dir(self.work.path());
         command
     }

@@ -39,6 +39,7 @@ impl LocalStore {
     const LIBRARIES_DIR: &'static str = "libraries";
     const TAGS_FILE: &'static str = "tags.json";
     const DUMMY_DIR: &'static str = "dummy";
+    const LATEST_VERSION_CACHE_FILE: &'static str = "latest_version_cache.json";
 
     /// OS 標準のデータディレクトリから `$LOCAL` を解決する。
     ///
@@ -81,6 +82,12 @@ impl LocalStore {
 
     pub fn dummy_dir(&self, id: &str) -> Result<PathBuf> {
         Ok(self.library_dir(id)?.join(Self::DUMMY_DIR))
+    }
+
+    /// 本体の最新バージョンのキャッシュ (`$LOCAL/latest_version_cache.json`)。ライブラリ登録とは
+    /// 無関係だが、$LOCAL 配下のパス構築を一元管理する役割上ここに置く。
+    pub fn latest_version_cache_json(&self) -> PathBuf {
+        self.root.join(Self::LATEST_VERSION_CACHE_FILE)
     }
 
     /// `tags.json` の有無で、ライブラリが登録済みかどうかを判定する。不正な ID は登録され得ない
