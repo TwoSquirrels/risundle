@@ -68,12 +68,16 @@ fn existing_executable(candidate: PathBuf) -> Option<PathBuf> {
 ///
 /// `-v` 付きプリプロセスの標準エラーに出る探索リストを解析する。`CPATH` 等の環境変数は探索パスを
 /// 汚染する (ユーザーのライブラリが紛れる) ため取り除き、コンパイラ本来のシステム dir だけを得る。
+/// `parse_search_dirs` が探す目印文字列は英語固定なので、`LC_ALL`/`LANGUAGE` を `C` に固定し、
+/// 非英語ロケール環境でも gcc/clang の診断メッセージが翻訳されないようにする。
 pub fn system_includes(compiler: &Path) -> Result<Vec<PathBuf>> {
     let output = Command::new(compiler)
         .args(["-E", "-x", "c++", "-v", "-"])
         .env_remove("CPATH")
         .env_remove("C_INCLUDE_PATH")
         .env_remove("CPLUS_INCLUDE_PATH")
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -261,6 +265,39 @@ mod tests {
                 "echo '#include <...> search starts here:' >&2\n\
                  echo ' {}' >&2\n\
                  echo 'End of search list.' >&2",
+                include_dir.display()
+            ),
+        );
+
+        assert_eq!(
+            system_includes(&cc).unwrap(),
+            vec![dunce::canonicalize(&include_dir).unwrap()]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_includes_forces_the_c_locale() {
+        // 目印文字列 (`#include <...> search starts here:` 等) は英語固定でパースするため、
+        // 非英語ロケール環境でも gcc/clang の出力自体が英語のままになるよう LC_ALL/LANGUAGE を
+        // 固定している (#73)。偽コンパイラは、それらが `C` でなければ翻訳済みの目印を返すことで、
+        // 呼び出し側が明示的にロケールを固定していることを確かめる。
+        let temp = TempDir::new().unwrap();
+        let include_dir = temp.path().join("include");
+        fs::create_dir(&include_dir).unwrap();
+        let cc = fake_compiler(
+            temp.path(),
+            &format!(
+                "if [ \"$LC_ALL\" = C ] && [ \"$LANGUAGE\" = C ]; then\n\
+                 \x20 echo '#include <...> search starts here:' >&2\n\
+                 \x20 echo ' {}' >&2\n\
+                 \x20 echo 'End of search list.' >&2\n\
+                 else\n\
+                 \x20 echo '#include <...> の検索はここから始まります:' >&2\n\
+                 \x20 echo ' {}' >&2\n\
+                 \x20 echo '検索リストの終わりです。' >&2\n\
+                 fi",
+                include_dir.display(),
                 include_dir.display()
             ),
         );
