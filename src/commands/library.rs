@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::library::local::{LocalStore, validate_id};
 use crate::library::registry::{self, STD_ID};
 use crate::library::tags::{Registration, SchemaMismatch, Tags, TagsKind};
+use crate::output;
 
 pub fn run(command: LibraryCommand) -> Result<()> {
     let store = LocalStore::discover()?;
@@ -38,7 +39,7 @@ fn add(store: &LocalStore, id: &str, path: &Path) -> Result<()> {
     eprintln!("registering library `{id}`...");
     registry::register(store, id, &source_root)?;
 
-    println!("registered library `{id}`");
+    output::write_line(&format!("registered library `{id}`"));
     Ok(())
 }
 
@@ -48,7 +49,9 @@ fn add_std(store: &LocalStore, compiler: Option<&Path>) -> Result<()> {
     let requested = compiler.map_or_else(|| Config::default().compiler, Path::to_path_buf);
     let count = registry::add_std(store, &requested)?;
 
-    println!("registered the standard library (`{STD_ID}`) for {count} compiler(s)");
+    output::write_line(&format!(
+        "registered the standard library (`{STD_ID}`) for {count} compiler(s)"
+    ));
     Ok(())
 }
 
@@ -64,7 +67,7 @@ fn delete(store: &LocalStore, id: &str) -> Result<()> {
     ensure_registered(store, id)?;
     registry::remove(store, id)?;
 
-    println!("removed registration of library `{id}`");
+    output::write_line(&format!("removed registration of library `{id}`"));
     Ok(())
 }
 
@@ -81,7 +84,7 @@ fn update(store: &LocalStore, id: Option<&str>, path: Option<&Path>) -> Result<(
         None => {
             let ids = store.library_ids()?;
             if ids.is_empty() {
-                println!("no libraries to update");
+                output::write_line("no libraries to update");
                 return Ok(());
             }
             for id in ids {
@@ -99,14 +102,14 @@ fn update_one(store: &LocalStore, id: &str, path: Option<&Path>) -> Result<()> {
     ensure_registered(store, id)?;
     eprintln!("updating library `{id}`...");
     registry::reregister(store, id, path)?;
-    println!("updated library `{id}`");
+    output::write_line(&format!("updated library `{id}`"));
     Ok(())
 }
 
 fn list(store: &LocalStore) -> Result<()> {
     let ids = store.library_ids()?;
     if ids.is_empty() {
-        println!("no libraries are registered");
+        output::write_line("no libraries are registered");
         return Ok(());
     }
     // ID・種別・パスしか出さず、いずれも全スキーマバージョンに共通のため、スキーマ検証をしない
@@ -114,14 +117,18 @@ fn list(store: &LocalStore) -> Result<()> {
     // 種別を足しつつタブ区切りを保ち、grep/awk などでのパイプ処理を妨げない。
     for id in ids {
         let reg = Registration::load(&store.tags_json(&id)?)?;
-        println!("{id}\t{}\t{}", reg.kind_label(), reg.path.display());
+        output::write_line(&format!(
+            "{id}\t{}\t{}",
+            reg.kind_label(),
+            reg.path.display()
+        ));
     }
     Ok(())
 }
 
 /// `show` の 1 項目を、ラベル幅を揃えて出力する。最長ラベル `Compilers` に合わせる。
 fn show_field(label: &str, value: &str) {
-    println!("{label:<9} {value}");
+    output::write_line(&format!("{label:<9} {value}"));
 }
 
 fn show(store: &LocalStore, id: &str, verbose: bool) -> Result<()> {
@@ -159,7 +166,7 @@ fn show_tags(id: &str, tags: &Tags, verbose: bool) {
             show_field("Kind", "std (no identifier info or update detection)");
             show_field("Compilers", &compilers.len().to_string());
             for compiler in compilers {
-                println!("  {}", compiler.display());
+                output::write_line(&format!("  {}", compiler.display()));
             }
         }
         TagsKind::Library {
@@ -174,14 +181,14 @@ fn show_tags(id: &str, tags: &Tags, verbose: bool) {
             );
             if verbose {
                 show_field("Hash", hash);
-                println!("Definitions:");
+                output::write_line("Definitions:");
                 for (file, names) in files {
-                    println!("  {file}: {}", names.join(", "));
+                    output::write_line(&format!("  {file}: {}", names.join(", ")));
                 }
                 if !implements.is_empty() {
-                    println!("Implements:");
+                    output::write_line("Implements:");
                     for (file, names) in implements {
-                        println!("  {file}: {}", names.join(", "));
+                        output::write_line(&format!("  {file}: {}", names.join(", ")));
                     }
                 }
             }
