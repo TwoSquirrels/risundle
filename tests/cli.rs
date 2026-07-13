@@ -360,7 +360,7 @@ fn bundle_keeps_transitively_required_headers() {
 #[test]
 fn bundle_ignores_identifiers_in_comments_and_strings() {
     let sandbox = Sandbox::new();
-    // メソッド名を分け、識別子の逆引き衝突を避ける (両者が `value()` を共有すると巻き込まれる)。
+    // メソッド名を分ける理由は used_and_unused_library と同じ (逆引きの衝突回避)。
     let real = sandbox.write(
         "mylib/real.hpp",
         "#pragma once\nstruct Real { int real_value() const { return 5; } };\n",
@@ -500,7 +500,7 @@ fn bundle_detects_library_changes_unless_verification_is_bypassed() {
         .failure()
         .stderr(predicate::str::contains("has changed since registration"));
 
-    // --no-check ならハッシュ検証を飛ばして通る。
+    // --no-check は検証自体をスキップする明示指定なので、ハッシュが食い違っていても通る。
     sandbox
         .bundle_command()
         .args(["-k", STD, "--no-check", "main.cpp"])
