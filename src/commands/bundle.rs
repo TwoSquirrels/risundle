@@ -86,7 +86,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
         |origin| display_origin(origin, &inventory, target_dir),
     );
 
-    print!("{}", assemble_output(&file, &settings, &bundled)?);
+    crate::output::write(&assemble_output(&file, &settings, &bundled)?);
     Ok(())
 }
 
