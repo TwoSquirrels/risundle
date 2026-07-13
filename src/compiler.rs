@@ -277,6 +277,39 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn system_includes_forces_the_c_locale() {
+        // 目印文字列 (`#include <...> search starts here:` 等) は英語固定でパースするため、
+        // 非英語ロケール環境でも gcc/clang の出力自体が英語のままになるよう LC_ALL/LANGUAGE を
+        // 固定している (#73)。偽コンパイラは、それらが `C` でなければ翻訳済みの目印を返すことで、
+        // 呼び出し側が明示的にロケールを固定していることを確かめる。
+        let temp = TempDir::new().unwrap();
+        let include_dir = temp.path().join("include");
+        fs::create_dir(&include_dir).unwrap();
+        let cc = fake_compiler(
+            temp.path(),
+            &format!(
+                "if [ \"$LC_ALL\" = C ] && [ \"$LANGUAGE\" = C ]; then\n\
+                 \x20 echo '#include <...> search starts here:' >&2\n\
+                 \x20 echo ' {}' >&2\n\
+                 \x20 echo 'End of search list.' >&2\n\
+                 else\n\
+                 \x20 echo '#include <...> の検索はここから始まります:' >&2\n\
+                 \x20 echo ' {}' >&2\n\
+                 \x20 echo '検索リストの終わりです。' >&2\n\
+                 fi",
+                include_dir.display(),
+                include_dir.display()
+            ),
+        );
+
+        assert_eq!(
+            system_includes(&cc).unwrap(),
+            vec![dunce::canonicalize(&include_dir).unwrap()]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn system_includes_reports_compiler_failure_with_its_stderr() {
         let temp = TempDir::new().unwrap();
         let cc = fake_compiler(temp.path(), "echo 'unsupported option' >&2\nexit 1");
