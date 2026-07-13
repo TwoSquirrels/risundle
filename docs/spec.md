@@ -31,6 +31,15 @@ This document goes deeper than the README, covering each command's behavior, err
     - By default, shows the ID, include path, kind, and the number of files that have defined identifiers.
     - With `-v`, also shows the aggregate hash, the list of defined identifiers per file, and the implementation target type names.
 
+### Update check
+
+Every `library` subcommand checks crates.io for the latest stable release (excluding pre-releases) of risundle itself before doing its actual work, and prints a one-line notice to stderr if it's newer than the current version. This never happens on the bundling path (`risundle <file>`).
+
+- The check time and latest version are cached in `$LOCAL/latest_version_cache.json`, and re-checked at most once every 24 hours. A missing, corrupt, or expired cache is all treated as "no cache" rather than an error, since it's a pure cache: if it can't be read, silently rebuilding it is enough.
+- Network failures, timeouts, and malformed responses are things the user can't act on, so they're silently ignored — neither an error nor a warning.
+- The suggested command adapts to the environment: `cargo install-update risundle` if `cargo-install-update` is on `PATH`, otherwise plain `cargo install risundle --force`.
+- Setting the `RISUNDLE_NO_UPDATE_CHECK` environment variable disables the check entirely.
+
 ## Bundling
 
 See the README for the full list of options. The following are the behavioral details.

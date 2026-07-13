@@ -34,6 +34,8 @@ cargo install risundle
 cargo install-update risundle
 ```
 
+`risundle library` サブコマンド実行時、新しいバージョンが出ていれば標準エラーに一言案内が出ます (`risundle` 本体、つまりバンドル実行時には出ません)。`RISUNDLE_NO_UPDATE_CHECK` を設定すると無効化できます。
+
 ## クイックスタート
 
 ```bash
