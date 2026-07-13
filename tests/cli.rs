@@ -5,6 +5,7 @@
 mod common;
 
 use std::collections::BTreeSet;
+use std::process::Stdio;
 
 use assert_cmd::prelude::*;
 use common::{Sandbox, compile_and_run};
@@ -436,6 +437,33 @@ fn embed_includes_original_source_as_comment() {
         .success()
         .stdout(predicate::str::contains("--- original source ---"))
         .stdout(predicate::str::contains("// int main() { return 0; }"));
+}
+
+#[test]
+fn broken_pipe_while_writing_output_does_not_panic() {
+    // 出力先パイプを OS のバッファ (Linux で既定 64KiB) より前に閉じ、`| head` のような早期打ち切りを
+    // 再現する。main.cpp 自身をコメントで肥大化させ、ライブラリや特定コンパイラの機能に頼らずに
+    // 出力サイズを稼ぐ (#62)。
+    let sandbox = Sandbox::new();
+    let filler = "// filler\n".repeat(20_000);
+    sandbox.write("main.cpp", &format!("{filler}int main() {{ return 0; }}\n"));
+
+    let mut child = sandbox
+        .bundle_command()
+        .args(["-k", STD, "main.cpp"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn risundle");
+
+    drop(child.stdout.take());
+    let output = child.wait_with_output().expect("wait for risundle");
+
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("panicked"),
+        "broken pipe でパニックしてはいけない: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

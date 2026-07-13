@@ -25,6 +25,7 @@ use crate::config;
 use crate::fs::relpath;
 use crate::library::local::LocalStore;
 use crate::library::registry::{self, STD_ID};
+use crate::output;
 
 pub fn run(args: BundleArgs) -> Result<()> {
     let store = LocalStore::discover()?;
@@ -86,7 +87,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
         |origin| display_origin(origin, &inventory, target_dir),
     );
 
-    print!("{}", assemble_output(&file, &settings, &bundled)?);
+    output::write(&assemble_output(&file, &settings, &bundled)?);
     Ok(())
 }
 
