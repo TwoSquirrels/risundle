@@ -5,6 +5,7 @@ mod compiler;
 mod config;
 mod fs;
 mod library;
+mod output;
 
 use std::ffi::OsString;
 
