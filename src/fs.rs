@@ -4,3 +4,4 @@
 pub mod relpath;
 pub mod source;
 pub mod walk;
+pub mod which;

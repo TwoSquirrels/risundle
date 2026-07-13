@@ -8,11 +8,12 @@
 //! への symlink) が `clang` に化けて区別できなくなり、`g++` も `x86_64-linux-gnu-g++-14` のような
 //! 実体名になってしまう。表記揺れの解消に必要なのは絶対パス化だけで、symlink 解決はやり過ぎ。
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, anyhow, bail};
+
+use crate::fs::which::{existing_executable, find_in_path};
 
 /// コンパイラ名/パスを絶対パスへ解決する (シンボリックリンクは辿らない)。
 ///
@@ -41,27 +42,6 @@ pub fn resolve(compiler: &Path) -> Result<PathBuf> {
             compiler.display()
         )
     })
-}
-
-/// `PATH` の各ディレクトリから `name` の実行ファイルを探し、最初に見つかったパスを返す。
-fn find_in_path(name: &Path, path_var: &OsStr) -> Option<PathBuf> {
-    std::env::split_paths(path_var).find_map(|dir| existing_executable(dir.join(name)))
-}
-
-/// `candidate` に実在する実行ファイルを返す。Windows では実体が `g++.exe` なので、拡張子なしの
-/// 指定に `.exe` を補った形も探す (`Command` がプロセス起動時に行う補完と同じ規則に揃える)。
-fn existing_executable(candidate: PathBuf) -> Option<PathBuf> {
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-    #[cfg(windows)]
-    if candidate.extension().is_none() {
-        let with_exe = candidate.with_extension("exe");
-        if with_exe.is_file() {
-            return Some(with_exe);
-        }
-    }
-    None
 }
 
 /// コンパイラのシステム include パス一覧を検出する。
@@ -205,36 +185,6 @@ mod tests {
         let resolved = resolve(&link).unwrap();
         assert_eq!(resolved, std::path::absolute(&link).unwrap());
         assert_ne!(resolved, resolve(&real).unwrap());
-    }
-
-    #[test]
-    fn finds_bare_name_in_path() {
-        let temp = TempDir::new().unwrap();
-        let bin = temp.path().join("mycc");
-        fs::write(&bin, "").unwrap();
-
-        let found = find_in_path(Path::new("mycc"), temp.path().as_os_str());
-        assert_eq!(found, Some(bin));
-    }
-
-    #[test]
-    fn missing_bare_name_yields_none() {
-        let temp = TempDir::new().unwrap();
-        assert_eq!(
-            find_in_path(Path::new("nonexistent-cc"), temp.path().as_os_str()),
-            None
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn finds_bare_name_with_exe_extension_on_windows() {
-        // PATH 上の実体は `g++.exe` のように拡張子付き。拡張子なしの指定でも見つかるべき。
-        let temp = TempDir::new().unwrap();
-        fs::write(temp.path().join("mycc.exe"), "").unwrap();
-
-        let found = find_in_path(Path::new("mycc"), temp.path().as_os_str());
-        assert_eq!(found, Some(temp.path().join("mycc.exe")));
     }
 
     #[test]
