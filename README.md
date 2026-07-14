@@ -135,7 +135,7 @@ risundle stays nearly constant regardless of library size, while IWYU grows as t
 3. Compute the transitive closure of required headers with `-M` (also keeping the implementation files of needed types), and remove the unneeded headers left in the output.
 4. Reassemble everything into a single file while preserving the original origins with `#line` directives.
 
-Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly.
+Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly. See [docs/spec.md](docs/spec.md) for the detailed behavior and error conditions of each command.
 
 ## Development
 
