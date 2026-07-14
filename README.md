@@ -9,16 +9,16 @@ English | [日本語](README.ja.md)
 [![crates.io](https://img.shields.io/crates/v/risundle.svg)](https://crates.io/crates/risundle)
 [![license](https://img.shields.io/crates/l/risundle.svg)](LICENSE)
 
-risundle bundles your competitive programming solution, libraries included, into a single file ready for submission. Unlike tools such as [oj-bundle](https://github.com/online-judge-tools/verification-helper), which simply expand every `#include` as is, risundle performs tree-shaking to keep only the parts your solution actually uses, so the bundled file stays small.
+risundle bundles your competitive programming solution, libraries included, into a single file ready for submission. Unlike tools such as [oj-bundle](https://github.com/online-judge-tools/verification-helper), which simply expand every `#include` as is, risundle performs tree-shaking to keep only the header files your solution actually uses, so the bundled file stays small.
 
 ## Features
 
 - A tool tailored to competitive programming submissions: it needs no heavy static analysis like IWYU and relies solely on your local compiler's preprocessing.
-- It keeps only the code your solution actually uses, so submissions pass even on judges with strict size limits.
+- It keeps only the header files your solution actually uses, so submissions pass even on judges with strict size limits.
 - Prepare a single template that includes all of your own libraries, and you no longer need to switch includes per problem.
 
 > [!NOTE]
-> Libraries that split declarations and implementations across files are handled by tracing implementation files through the "implementation target type names" recorded at registration. Files whose target cannot be determined statically (e.g. files defining only free-function operators) may still lose their definitions after bundling and fail to compile.
+> Libraries that split declarations and implementations across files are handled by tracing implementation files through the "implementation target type names" recorded at registration. Files whose target cannot be determined statically (e.g. files defining only free-function operators) may still lose their definitions after bundling and fail to compile or link. See [docs/compatibility.md](docs/compatibility.md) for the conditions a library must meet.
 
 ## Installation
 
@@ -139,7 +139,7 @@ Because include expansion is delegated to the compiler, both `#pragma once` and 
 
 ## Development
 
-The functional specification is in [docs/spec.md](docs/spec.md), and the internal design rationale is in [docs/architecture.md](docs/architecture.md) (Japanese only).
+The functional specification is in [docs/spec.md](docs/spec.md), the conditions a library must meet are in [docs/compatibility.md](docs/compatibility.md), and the internal design rationale is in [docs/architecture.md](docs/architecture.md) (Japanese only).
 
 ## License
 

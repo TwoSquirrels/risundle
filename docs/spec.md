@@ -94,9 +94,7 @@ Qualifiers whose target cannot be determined statically (decltype, dependent nam
 - The body contains `#line` directives indicating origins (so that post-bundle compiler diagnostics point to the lines in the original files). Kept libraries are restored to `#include` (angle-bracket form), while other used headers remain as expanded code.
 - Lines consumed by preprocessing — macro definitions, untaken `#ifdef` branches, and the like — leave blank lines behind, but a run never exceeds 8 lines. The preprocessor fills gaps longer than 8 lines with a linemarker instead of blank lines, which risundle converts into a single `#line` directive, so macro-heavy sources do not bloat the output with blank lines.
 
-### Known limitation
-
-If you write a kept library with `#include "..."` and a path of the same name (e.g., `./atcoder/dsu`) happens to exist in the same directory as the file being bundled, the `""` current-directory search takes precedence and bypasses the dummy, causing the kept library to be expanded. Because the `""` source-directory search is standard C++ behavior that cannot be suppressed from the compiler, using `<>` includes for kept libraries is recommended.
+For the conditions a library must meet for risundle to bundle it correctly (per-file self-containedness and so on), see [compatibility.md](compatibility.md).
 
 ## `tags.json`
 

@@ -45,7 +45,7 @@ risundle library add ac-library ~/ac-library
 risundle main.cpp > submission.cpp
 ```
 
-You get a `submission.cpp` containing only the parts `main.cpp` actually uses. Paste it into the judge and you are done.
+You get a `submission.cpp` where, out of your libraries, only the header files `main.cpp` actually uses remain. Paste it into the judge and you are done.
 
 ### Copy straight to the clipboard without creating a file
 
@@ -151,6 +151,10 @@ risundle library show mylib -v  # down to which file defines which identifiers
 ```
 
 When tree-shaking output is not what you expected, `-v` tells you which file each identifier comes from.
+
+### Check whether your library is compatible with risundle
+
+risundle only supports libraries with reasonably well-behaved file layouts. See [compatibility.md](compatibility.md) for the exact conditions. For example, splitting a scope across files or generating declaration names with macros (X-macros) is unsupported.
 
 ### Unregister
 
