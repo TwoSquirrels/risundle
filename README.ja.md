@@ -50,6 +50,8 @@ risundle main.cpp > submission.cpp
 
 ## 使い方
 
+「〜したい」から引く逆引き集は [docs/cheatsheet.ja.md](docs/cheatsheet.ja.md) にあります。以下は機能ごとの説明です。
+
 ### バンドル
 
 ```

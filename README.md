@@ -50,6 +50,8 @@ risundle main.cpp > submission.cpp
 
 ## Usage
 
+For a task-oriented "how do I ..." reference, see [docs/cheatsheet.md](docs/cheatsheet.md). The following describes each feature.
+
 ### Bundling
 
 ```
