@@ -18,7 +18,7 @@ risundle bundles your competitive programming solution, libraries included, into
 - Prepare a single template that includes all of your own libraries, and you no longer need to switch includes per problem.
 
 > [!NOTE]
-> Libraries that split declarations and implementations across files are handled by tracing implementation files through the "implementation target type names" recorded at registration. Files whose target cannot be determined statically (e.g. files defining only free-function operators) may still lose their definitions after bundling and fail to compile or link. See [docs/compatibility.md](docs/compatibility.md) for the conditions a library must meet.
+> risundle bundles correctly only libraries with reasonably well-behaved file layouts. Libraries that split declarations and implementations across files are supported too, but a file containing only operator overloads, for example, can lose its definitions and fail to compile or link after bundling. See [docs/compatibility.md](docs/compatibility.md) for the exact conditions.
 
 ## Installation
 
