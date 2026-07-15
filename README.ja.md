@@ -20,6 +20,93 @@
 > [!NOTE]
 > risundle が正しくバンドルできるのは、ある程度行儀の良いファイル分割をしているライブラリです。宣言と実装が別ファイルのライブラリにも対応していますが、演算子オーバーロードだけを書いたファイルなどでは定義が消え、コンパイルエラーやリンクエラーになる可能性があります。詳しい条件は [docs/compatibility.ja.md](docs/compatibility.ja.md) を参照してください。
 
+## バンドル例
+
+たとえば、`modint.hpp` を土台にして `modpow.hpp` と `combination.hpp` を重ねた、3 ファイルの自作ライブラリを `mylib` という ID で登録しておきます。
+
+```cpp
+// modint.hpp
+#pragma once
+
+constexpr long long MOD = 998244353;
+
+struct ModInt {
+    long long v = 0;
+    ModInt(long long v) : v(v % MOD) {}
+    ModInt& operator*=(ModInt o) { v = v * o.v % MOD; return *this; }
+    // ほか 100 行程度の実装
+};
+
+// modpow.hpp
+#pragma once
+#include "modint.hpp"
+
+ModInt modpow(ModInt a, long long n) {
+    ModInt r = 1;
+    for (; n > 0; n >>= 1, a *= a)
+        if (n & 1) r *= a;
+    return r;
+}
+
+// combination.hpp
+#pragma once
+#include "modint.hpp"
+
+struct Combination {
+    // 100 行程度の実装
+};
+```
+
+解答はこのライブラリから 2 ファイルを include していますが、実際に使うのは `modpow` だけです。
+
+```cpp
+// main.cpp
+#include <bits/stdc++.h>
+#include <modpow.hpp>
+#include <combination.hpp>
+
+int main() {
+    std::cout << modpow(2, 100).v << std::endl;
+}
+```
+
+これをバンドルすると、次の 1 ファイルにまとまります。
+
+```cpp
+// submission.cpp
+// Bundled with risundle v2.0.0
+#line 1 "main.cpp"
+#include <bits/stdc++.h>
+#line 1 "mylib/modpow.hpp"
+       
+#line 1 "mylib/modint.hpp"
+       
+
+constexpr long long MOD = 998244353;
+
+struct ModInt {
+    long long v = 0;
+    ModInt(long long v) : v(v % MOD) {}
+    ModInt& operator*=(ModInt o) { v = v * o.v % MOD; return *this; }
+    // ほか 100 行程度の実装
+};
+#line 3 "mylib/modpow.hpp"
+
+ModInt modpow(ModInt a, long long n) {
+    ModInt r = 1;
+    for (; n > 0; n >>= 1, a *= a)
+        if (n & 1) r *= a;
+    return r;
+}
+#line 4 "main.cpp"
+
+int main() {
+    std::cout << modpow(2, 100).v << std::endl;
+}
+```
+
+include していても使っていない `combination.hpp` は削除され、`modpow.hpp` が依存する `modint.hpp` は維持されます。標準ライブラリは `#include` のまま残ります。`#line` はコンパイラの診断を元ファイルの行番号で表示させるためのもので、ジャッジのエラーも元ファイル基準で読めます。
+
 ## インストール
 
 [Rust ツールチェーン](https://www.rust-lang.org/tools/install) と、GCC 互換の C++ コンパイラ (`g++` や `clang++` など) が必要です。risundle が依存する `-E`/`-M`/`-v` オプションを持たない MSVC には対応していません。
