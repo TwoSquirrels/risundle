@@ -9,16 +9,16 @@ English | [日本語](README.ja.md)
 [![crates.io](https://img.shields.io/crates/v/risundle.svg)](https://crates.io/crates/risundle)
 [![license](https://img.shields.io/crates/l/risundle.svg)](LICENSE)
 
-risundle bundles your competitive programming solution, libraries included, into a single file ready for submission. Unlike tools such as [oj-bundle](https://github.com/online-judge-tools/verification-helper), which simply expand every `#include` as is, risundle performs tree-shaking to keep only the parts your solution actually uses, so the bundled file stays small.
+risundle bundles your competitive programming solution, libraries included, into a single file ready for submission. Unlike tools such as [oj-bundle](https://github.com/online-judge-tools/verification-helper), which simply expand every `#include` as is, risundle performs tree-shaking to keep only the header files your solution actually uses, so the bundled file stays small.
 
 ## Features
 
 - A tool tailored to competitive programming submissions: it needs no heavy static analysis like IWYU and relies solely on your local compiler's preprocessing.
-- It keeps only the code your solution actually uses, so submissions pass even on judges with strict size limits.
+- It keeps only the header files your solution actually uses, so submissions pass even on judges with strict size limits.
 - Prepare a single template that includes all of your own libraries, and you no longer need to switch includes per problem.
 
 > [!NOTE]
-> Libraries that split declarations and implementations across files are handled by tracing implementation files through the "implementation target type names" recorded at registration. Files whose target cannot be determined statically (e.g. files defining only free-function operators) may still lose their definitions after bundling and fail to compile.
+> risundle bundles correctly only libraries with reasonably well-behaved file layouts. Libraries that split declarations and implementations across files are supported too, but a file containing only operator overloads, for example, can lose its definitions and fail to compile or link after bundling. See [docs/compatibility.md](docs/compatibility.md) for the exact conditions.
 
 ## Installation
 
@@ -49,6 +49,8 @@ risundle main.cpp > submission.cpp
 `std` is registered automatically on the first bundle and is kept by default.
 
 ## Usage
+
+For a task-oriented "how do I ..." reference, see [docs/cheatsheet.md](docs/cheatsheet.md). The following describes each feature.
 
 ### Bundling
 
@@ -133,11 +135,11 @@ risundle stays nearly constant regardless of library size, while IWYU grows as t
 3. Compute the transitive closure of required headers with `-M` (also keeping the implementation files of needed types), and remove the unneeded headers left in the output.
 4. Reassemble everything into a single file while preserving the original origins with `#line` directives.
 
-Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly.
+Because include expansion is delegated to the compiler, both `#pragma once` and manual include guards are handled correctly. See [docs/spec.md](docs/spec.md) for the detailed behavior and error conditions of each command.
 
 ## Development
 
-The functional specification is in [docs/spec.md](docs/spec.md), and the internal design rationale is in [docs/architecture.md](docs/architecture.md) (Japanese only).
+The functional specification is in [docs/spec.md](docs/spec.md), the conditions a library must meet are in [docs/compatibility.md](docs/compatibility.md), and the internal design rationale is in [docs/architecture.md](docs/architecture.md) (Japanese only).
 
 ## License
 

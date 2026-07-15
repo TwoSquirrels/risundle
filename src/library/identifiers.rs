@@ -50,7 +50,7 @@ const NAME_NODES: &[&str] = &["identifier", "type_identifier", "field_identifier
 pub struct Enumeration {
     /// 各ファイルが定義する識別子名 (tags.json の `files`)。
     pub definitions: BTreeMap<String, Vec<String>>,
-    /// 各ファイルの「実装先の型名」(tags.json の `implements`)。クラス外の修飾付き定義
+    /// 各ファイルの「実装先の名前」(tags.json の `implements`)。クラス外の修飾付き定義
     /// (`X<...>::method`) の修飾側や、明示的特殊化 (`template <> struct T<...>`) の主テンプレート名。
     /// 演算子オーバーロードのように定義識別子が残らない実装ファイルでも、依存を逆引きできるように
     /// する。namespace 修飾 (`void ns::f()`) の namespace 名も混ざるが、namespace 名は定義
@@ -58,7 +58,7 @@ pub struct Enumeration {
     pub implements: BTreeMap<String, Vec<String>>,
 }
 
-/// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名と実装先の型名を
+/// `source_root` 以下のソースファイルを走査し、各ファイルが定義する識別子名と実装先の名前を
 /// 集約する。対象ファイルの選別は [`source::walk_sources`] が担う。
 ///
 /// ファイルを処理する直前に `on_progress(相対パス)` を呼ぶ。登録に時間がかかるため、呼び出し側が
@@ -88,7 +88,7 @@ pub fn enumerate(source_root: &Path, mut on_progress: impl FnMut(&str)) -> Resul
     Ok(result)
 }
 
-/// 1 ファイルのソースから、(定義された識別子名, 実装先の型名) をそれぞれ重複排除・昇順で返す。
+/// 1 ファイルのソースから、(定義された識別子名, 実装先の名前) をそれぞれ重複排除・昇順で返す。
 fn names_in_file(parser: &mut Parser, source: &[u8]) -> Result<(Vec<String>, Vec<String>)> {
     let tree = parser
         .parse(source, None)
@@ -141,7 +141,7 @@ fn collect_leaf(
     names: &mut BTreeSet<String>,
     implements: &mut BTreeSet<String>,
 ) {
-    // クラス外の修飾付き定義 (`X<...>::method`) は、修飾側 (`X`) が実装先の型名。定義名の探索とは
+    // クラス外の修飾付き定義 (`X<...>::method`) は、修飾側 (`X`) が実装先の名前。定義名の探索とは
     // 独立に記録する。name 側の探索は下のフィールド辿りが担う (入れ子の `a::b::f` も再帰で各段の
     // 修飾側を拾う)。
     if node.kind() == "qualified_identifier"
@@ -183,7 +183,7 @@ fn collect_leaf(
     }
 }
 
-/// 実装先の型名ノードから、その基底の名前を採用する。`FormalPowerSeries<mint>` のような
+/// 実装先の名前ノードから、その基底の名前を採用する。`FormalPowerSeries<mint>` のような
 /// テンプレート実引数付きはテンプレート名だけを取り、実引数には降りない (実引数は参照であって
 /// 実装先ではない)。
 fn collect_implement_target(node: Node<'_>, source: &[u8], implements: &mut BTreeSet<String>) {

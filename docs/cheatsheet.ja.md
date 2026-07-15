@@ -45,7 +45,7 @@ risundle library add ac-library ~/ac-library
 risundle main.cpp > submission.cpp
 ```
 
-`main.cpp` が実際に使っている部分だけが残った `submission.cpp` ができます。あとはジャッジに貼るだけ。
+ライブラリのうち `main.cpp` が実際に使っているヘッダーファイルだけが残った `submission.cpp` ができます。あとはジャッジに貼るだけ。
 
 ### ファイルを作らず直接クリップボードにコピーしたい
 
@@ -150,6 +150,10 @@ risundle library show mylib -v  # どのファイルがどの識別子を定義�
 ```
 
 tree-shaking の結果が想定と違うとき、`-v` で「この関数はこのファイル由来」を確認できます。
+
+### 自分のライブラリが risundle に対応しているか確認したい
+
+risundle は、ある程度行儀の良いファイル分割をしているライブラリだけに対応しています。正確な条件は [compatibility.ja.md](compatibility.ja.md) を参照してください。たとえばファイルを跨いだスコープの分割や、マクロで宣言名を生成する構成 (X-macro) はサポート外です。
 
 ### 登録をやめたい
 

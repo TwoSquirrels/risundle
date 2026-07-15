@@ -9,16 +9,16 @@
 [![crates.io](https://img.shields.io/crates/v/risundle.svg)](https://crates.io/crates/risundle)
 [![license](https://img.shields.io/crates/l/risundle.svg)](LICENSE)
 
-競技プログラミングの解答を、ライブラリ込みで提出用の 1 ファイルにまとめます。include をそのまま展開する [oj-bundle](https://github.com/online-judge-tools/verification-helper) などと違い、解答が実際に使っている部分だけを残す tree-shaking を行うため、バンドル後のファイルが小さくなります。
+競技プログラミングの解答を、ライブラリ込みで提出用の 1 ファイルにまとめます。include をそのまま展開する [oj-bundle](https://github.com/online-judge-tools/verification-helper) などと違い、解答が実際に使っているヘッダーファイルだけを残す tree-shaking を行うため、バンドル後のファイルが小さくなります。
 
 ## 特徴
 
 - IWYU のような重い静的解析を必要とせず、手元のコンパイラのプリプロセスだけで完結する、競技プログラミング提出に特化したツールです。
-- 解答が実際に使っているコードだけを残すので、提出サイズ制限の厳しいジャッジでも通りやすくなります。
+- 解答が実際に使っているヘッダーファイルだけを残すので、提出サイズ制限の厳しいジャッジでも通りやすくなります。
 - 自作ライブラリを全部 include したテンプレートを 1 つ用意すれば、問題ごとに include を切り替える必要がありません。
 
 > [!NOTE]
-> 宣言と実装が別ファイルに分かれたライブラリは、登録時に記録する「実装先の型名」から実装ファイルを辿って維持します。ただし実装先を静的に特定できないファイル (自由関数の演算子だけを定義するファイルなど) は、バンドル後に定義が消えてコンパイルエラーになる可能性があります。
+> risundle が正しくバンドルできるのは、ある程度行儀の良いファイル分割をしているライブラリです。宣言と実装が別ファイルのライブラリにも対応していますが、演算子オーバーロードだけを書いたファイルなどでは定義が消え、コンパイルエラーやリンクエラーになる可能性があります。詳しい条件は [docs/compatibility.ja.md](docs/compatibility.ja.md) を参照してください。
 
 ## インストール
 
@@ -49,6 +49,8 @@ risundle main.cpp > submission.cpp
 `std` は初回バンドル時に自動登録され、既定で温存されます。
 
 ## 使い方
+
+「〜したい」から引く逆引き集は [docs/cheatsheet.ja.md](docs/cheatsheet.ja.md) にあります。以下は機能ごとの説明です。
 
 ### バンドル
 
@@ -133,11 +135,11 @@ risundle はライブラリ規模によらずほぼ一定で、IWYU はヘッダ
 3. `-M` で必要なヘッダーの推移閉包を求め (必要になった型の実装ファイルも維持する)、出力に残った不要なヘッダーを削除する。
 4. `#line` ディレクティブで元の出所を保ちつつ、1 ファイルへ再構成する。
 
-include の展開はコンパイラに任せているため、`#pragma once` も手動インクルードガードも正しく扱われます。
+include の展開はコンパイラに任せているため、`#pragma once` も手動インクルードガードも正しく扱われます。各コマンドの挙動やエラー条件の詳細は [docs/spec.ja.md](docs/spec.ja.md) を参照してください。
 
 ## 開発
 
-機能仕様は [docs/spec.ja.md](docs/spec.ja.md)、内部設計の方針は [docs/architecture.md](docs/architecture.md) にまとめています。
+機能仕様は [docs/spec.ja.md](docs/spec.ja.md)、対応できるライブラリの条件は [docs/compatibility.ja.md](docs/compatibility.ja.md)、内部設計の方針は [docs/architecture.md](docs/architecture.md) にまとめています。
 
 ## ライセンス
 
