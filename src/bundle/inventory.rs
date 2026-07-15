@@ -27,7 +27,7 @@ struct Library {
     kind: TagsKind,
 }
 
-/// 1 ファイルの `tags.json` レコード。定義識別子と実装先の型名を対で保持する。
+/// 1 ファイルの `tags.json` レコード。定義識別子と実装先の名前を対で保持する。
 struct FileTags<'a> {
     defines: &'a [String],
     implements: &'a [String],
@@ -142,7 +142,7 @@ impl Inventory {
 
     /// `present` のうち、`needed` 内のいずれかのファイルが定義する型を実装しているファイルを返す。
     ///
-    /// 「実装している」は登録時に記録した実装先の型名 (`tags.json` の `implements`) と、`needed` 側の
+    /// 「実装している」は登録時に記録した実装先の名前 (`tags.json` の `implements`) と、`needed` 側の
     /// 定義識別子との照合で判定する。演算子オーバーロードのような、定義識別子として現れない依存を
     /// 拾うための逆引き。
     pub fn implementation_files(

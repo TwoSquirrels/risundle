@@ -21,7 +21,7 @@ One pitfall follows directly from this premise. In a library that splits declara
 At `library add` time, risundle parses each library file individually, without preprocessing, and records the names it defines (classes, functions, variables, and so on). At bundle time, it reverse-looks-up these records from the names appearing in your solution and keeps only the needed files. Each file is therefore required to:
 
 - **Parse on its own.** Any scope a file opens (`{`, `namespace`, etc.) must be closed within the same file, and a file must not start in the middle of a scope another file opened.
-- **Carry, as a name, the clue for its own survival.** It must contain either a named definition or an out-of-class implementation (whose target type name is picked up; see "Keeping implementation files" in [spec.md](spec.md)). A file with neither can only be judged "unused" and may be dropped by tree-shaking.
+- **Carry, as a name, the clue for its own survival.** It must contain either a named definition or an out-of-class implementation (whose implementation target name is picked up; see "Keeping implementation files" in [spec.md](spec.md)). A file with neither can only be judged "unused" and may be dropped by tree-shaking.
 
 Typical layouts that break these conditions follow.
 
@@ -84,7 +84,7 @@ When a file disappears because these conditions were violated, the result is alm
 
 The one exception is the namespace-wrapper example: with unqualified use, the meaning can silently change without any error.
 
-Note that out-of-class implementations and explicit specializations only work as clues when the target type (primary template) is defined in an expanded file of a registered library. A file whose target lives outside the library (e.g. one containing only a `std::hash` specialization) can likewise disappear, but since the whole specialization is lost, it shows up as a compile error rather than a link error.
+Note that out-of-class implementations and explicit specializations only work as clues when the implementation target (a class or primary template) is defined in an expanded file of a registered library. A file whose target lives outside the library (e.g. one containing only a `std::hash` specialization) can likewise disappear, but since the whole specialization is lost, it shows up as a compile error rather than a link error.
 
 Compile and link errors can be caught by verifying locally before submitting; see the automatic-fallback recipe in [cheatsheet.md](cheatsheet.md) (a shell one-liner that compiles the bundle locally and falls back to full expansion on failure). The permanent fix is restructuring the library: for example, operator definitions survive when placed in the same file as a named definition (or the file with the class body). In a pinch, `--no-tree-shaking` gets you through.
 

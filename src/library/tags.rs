@@ -52,7 +52,7 @@ pub enum TagsKind {
         hash: String,
         // 出力順を安定させるため BTreeMap を使う (HashMap だと tags.json の diff が毎回ぶれる)。
         files: BTreeMap<String, Vec<String>>,
-        /// ファイルごとの「実装先の型名」一覧。クラス外の修飾付き定義 (`X<...>::method`) や明示的
+        /// ファイルごとの「実装先の名前」一覧。クラス外の修飾付き定義 (`X<...>::method`) や明示的
         /// 特殊化 (`template <> struct T<...>`) が対象とする型名で、`files` (定義識別子) と対になる。
         /// 定義識別子に現れない依存 (演算子オーバーロード等) をバンドル時に逆引きするために使う。
         /// 実装先を持たないファイルはキー自体を持たない。

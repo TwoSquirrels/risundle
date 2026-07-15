@@ -18,7 +18,7 @@ This document goes deeper than the README, covering each command's behavior, err
     - Errors if `<id>` is empty, `.`, `..`, or contains a path separator (`/`, `\`) or `:` (the ID is used as an internal data directory name as is).
     - Errors if `<id>` is `std` (use `add-std` for the standard library).
     - Errors if the same `<id>` is already registered.
-    - On registration, records the list of defined identifiers for each file, the list of implementation target type names, and an aggregate hash computed from the contents under `<path>`. An implementation target is the qualifier of an out-of-class qualified definition (`X<...>::method`) or the primary template name of an explicit specialization (`template <> struct T<...>`), expressing "which type this file implements".
+    - On registration, records the list of defined identifiers for each file, the list of implementation target names, and an aggregate hash computed from the contents under `<path>`. An implementation target name is the qualifier of an out-of-class qualified definition (`X<...>::method`) or the primary template name of an explicit specialization (`template <> struct T<...>`), expressing "which type (or function template) this file implements".
 - `add-std [<compiler>]` — Register the standard library (`std`).
     - Auto-detects the system include search paths of `<compiler>` (default `g++`).
     - Calling it repeatedly adds that compiler to the recognized set each time (additive). It merges the search paths of all compilers in the set into one, so you can switch between multiple compilers.
@@ -29,7 +29,7 @@ This document goes deeper than the README, covering each command's behavior, err
 - `list` — List the IDs and include paths of registered libraries.
 - `show [-v | --verbose] <id>` — Show details of a library. Errors if not registered.
     - By default, shows the ID, include path, kind, and the number of files that have defined identifiers.
-    - With `-v`, also shows the aggregate hash, the list of defined identifiers per file, and the implementation target type names.
+    - With `-v`, also shows the aggregate hash, the list of defined identifiers per file, and the implementation target names.
 
 ### Update check
 
@@ -81,7 +81,7 @@ This option is intended as a temporary fallback for when tree-shaking goes wrong
 
 In a library that splits declarations and implementations across files, some dependencies cannot be detected as identifiers — operator overloads are the typical case (the user writes `f * g`; the token `operator*=` never appears). In addition to the identifier reverse lookup, the following rule therefore applies.
 
-> A file whose implementation target names include a type defined by an already-needed file is also considered needed.
+> A file whose implementation target names include a name defined by an already-needed file is also considered needed.
 
 Whenever new files become needed, the `-M` required set is recomputed, repeating until nothing is added (the candidates are limited to files present in the output and grow monotonically, so this always terminates). The matching only considers files present in the output; implementation files that are not included are never pulled in.
 
@@ -132,4 +132,4 @@ When `<id>` is `std`:
 - `compilers`: `std` only. The set of compilers that `std` was registered with (normalized to the absolute paths of the actual binaries).
 - `hash`: An aggregate hash computed from the relative paths and contents of all files under `path`. Not present for `std`.
 - `files`: Keys are paths relative to the library root, and values are the arrays of identifier names that the file defines. Not present for `std`. Non-`std` libraries always carry an empty object `{}` even when there are no identifiers, so they are structurally distinguishable from `std`.
-- `implements`: Keys are paths relative to the library root, and values are the arrays of implementation target type names of the file. Files without implementation targets have no key. Not present for `std`. Treated as empty when the key is missing on load.
+- `implements`: Keys are paths relative to the library root, and values are the arrays of implementation target names of the file. Files without implementation targets have no key. Not present for `std`. Treated as empty when the key is missing on load.
