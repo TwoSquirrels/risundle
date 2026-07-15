@@ -144,7 +144,7 @@ risundle library update         # 登録済み全部
 ### 何を登録したか確認したい
 
 ```bash
-risundle library list           # ID とパスの一覧
+risundle library list           # ID・種別・パスの一覧
 risundle library show mylib     # 詳細
 risundle library show mylib -v  # どのファイルがどの識別子を定義しているかまで
 ```

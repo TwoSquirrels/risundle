@@ -26,7 +26,7 @@ This document goes deeper than the README, covering each command's behavior, err
 - `update [<id> [<path>]]` — Apply changes to a library.
     - When `<id>` is given, errors if not registered. For `std`, it re-detects from the recognized compiler set; otherwise it re-registers (using the registered path when `<path>` is omitted).
     - When `<id>` is omitted, updates all registered libraries.
-- `list` — List the IDs and include paths of registered libraries.
+- `list` — List registered libraries in three tab-separated columns: ID, kind (`std` / `library`), and include path.
 - `show [-v | --verbose] <id>` — Show details of a library. Errors if not registered.
     - By default, shows the ID, include path, kind, and the number of files that have defined identifiers.
     - With `-v`, also shows the aggregate hash, the list of defined identifiers per file, and the implementation target names.
