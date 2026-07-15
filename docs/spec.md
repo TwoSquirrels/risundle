@@ -65,7 +65,7 @@ A warning is also printed when the effective keep contains an ID that matches no
 
 For libraries other than `std` that are not marked to be kept (`keep`), the registration-time hash is compared against the current contents. If they differ, it prompts you to run `library update` and exits with an error. Specifying `--no-check` skips the verification itself. Kept libraries and `std` are not verified because they do not use identifier information. For the same reason, no library is verified when `--no-tree-shaking` is specified.
 
-The hash is content-based rather than mtime-based, so it does not false-positive on time changes from `git clone` or `cp`, while it can detect file additions, deletions, and renames. It only covers source files, so changes to files that cannot affect bundling (READMEs, binary assets, and the like) are not detected.
+The hash is content-based rather than mtime-based, so it does not false-positive on time changes from `git clone` or `cp`, while it can detect file additions, deletions, and renames. It only covers the source files that pass the selection (see the `hash` entry under `tags.json`), so changes to excluded files (READMEs, binary assets, and the like) are not detected.
 
 ### Keep
 
@@ -130,6 +130,6 @@ When `<id>` is `std`:
 - `schema_version`: An integer for schema compatibility checks. Registrations whose value differs from the current one are automatically regenerated from the library sources at bundle time (a cache format difference is risundle's own concern and requires no user action). `update` and `add-std` likewise read only the registered path (or the compiler set for `std`) and rebuild, so they recover even from a mismatched schema. `list` and `show` stay read-only and never regenerate, printing what they can read (`show` prints regeneration guidance in place of the details).
 - `path`: The include path (absolute). For `std`, it records a representative one among the detected system include paths (the C++ standard library dir of the first compiler) for display.
 - `compilers`: `std` only. The set of compilers that `std` was registered with (normalized to the absolute paths of the actual binaries).
-- `hash`: An aggregate hash computed from the relative paths and contents of the source files under `path` (hidden files, non-C++-source extensions, and binaries are excluded; extension-less headers are included). The selection matches what identifier extraction scans. Not present for `std`.
+- `hash`: An aggregate hash computed from the relative paths and contents of the source files under `path`. A file qualifies when it is not under a hidden file or directory, has a C/C++ source extension or no extension at all, and contains no NUL byte (i.e. is not binary). The selection matches what identifier extraction scans. Not present for `std`.
 - `files`: Keys are paths relative to the library root, and values are the arrays of identifier names that the file defines. Not present for `std`. Non-`std` libraries always carry an empty object `{}` even when there are no identifiers, so they are structurally distinguishable from `std`.
 - `implements`: Keys are paths relative to the library root, and values are the arrays of implementation target names of the file. Files without implementation targets have no key. Not present for `std`. Treated as empty when the key is missing on load.
