@@ -1,6 +1,8 @@
-//! ライブラリ内容の集約ハッシュ計算。`<path>` 以下の全ファイルの相対パスと内容から sha256 を
-//! 計算し、ライブラリの更新検知に使う。mtime でなく内容ベースのため `git clone`/`cp` での時刻変化に
-//! 左右されず、相対パスも含めるためファイルの追加・削除・リネームも検知できる。
+//! ライブラリ内容の集約ハッシュ計算。`<path>` 以下のソースファイル ([`source::walk_sources`] の
+//! 選別後) の相対パスと内容から sha256 を計算し、ライブラリの更新検知に使う。mtime でなく内容
+//! ベースのため `git clone`/`cp` での時刻変化に左右されず、相対パスも含めるためファイルの追加・
+//! 削除・リネームも検知できる。識別子抽出と選別を共有するので、バンドルに影響しないファイル
+//! (README やバイナリ等) の変更では検知しない。
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -10,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::fs::{relpath, source};
 
-/// `root` 以下の全ファイルから集約ハッシュを計算し、`sha256:` プレフィックス付きで返す。
+/// `root` 以下のソースファイルから集約ハッシュを計算し、`sha256:` プレフィックス付きで返す。
 pub fn aggregate(root: &Path) -> Result<String> {
     let mut entries = Vec::new();
     source::walk_sources(root, |relative, content| {
