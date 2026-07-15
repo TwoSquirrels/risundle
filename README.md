@@ -28,8 +28,7 @@ For example, register a three-file library under the ID `mylib`: `modpow.hpp` an
 // modint.hpp
 #pragma once
 
-constexpr long long MOD = 998244353;
-
+template <long long MOD>
 struct ModInt {
     long long v = 0;
     ModInt(long long v) : v(v % MOD) {}
@@ -41,8 +40,9 @@ struct ModInt {
 #pragma once
 #include "modint.hpp"
 
-ModInt modpow(ModInt a, long long n) {
-    ModInt r = 1;
+template <long long MOD>
+ModInt<MOD> modpow(ModInt<MOD> a, long long n) {
+    ModInt<MOD> r = 1;
     for (; n > 0; n >>= 1, a *= a)
         if (n & 1) r *= a;
     return r;
@@ -52,6 +52,7 @@ ModInt modpow(ModInt a, long long n) {
 #pragma once
 #include "modint.hpp"
 
+template <long long MOD>
 struct Combination {
     // ~100 lines of implementation
 };
@@ -65,8 +66,10 @@ The solution includes two files from this library, but only actually uses `modpo
 #include <modpow.hpp>
 #include <combination.hpp>
 
+using mint = ModInt<998244353>;
+
 int main() {
-    std::cout << modpow(2, 100).v << std::endl;
+    std::cout << modpow(mint(2), 100).v << std::endl;
 }
 ```
 
@@ -82,8 +85,7 @@ Bundling it produces this single file.
 #line 1 "mylib/modint.hpp"
        
 
-constexpr long long MOD = 998244353;
-
+template <long long MOD>
 struct ModInt {
     long long v = 0;
     ModInt(long long v) : v(v % MOD) {}
@@ -92,16 +94,19 @@ struct ModInt {
 };
 #line 3 "mylib/modpow.hpp"
 
-ModInt modpow(ModInt a, long long n) {
-    ModInt r = 1;
+template <long long MOD>
+ModInt<MOD> modpow(ModInt<MOD> a, long long n) {
+    ModInt<MOD> r = 1;
     for (; n > 0; n >>= 1, a *= a)
         if (n & 1) r *= a;
     return r;
 }
 #line 4 "main.cpp"
 
+using mint = ModInt<998244353>;
+
 int main() {
-    std::cout << modpow(2, 100).v << std::endl;
+    std::cout << modpow(mint(2), 100).v << std::endl;
 }
 ```
 
