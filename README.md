@@ -20,6 +20,98 @@ risundle bundles your competitive programming solution, libraries included, into
 > [!NOTE]
 > risundle bundles correctly only libraries with reasonably well-behaved file layouts. Libraries that split declarations and implementations across files are supported too, but a file containing only operator overloads, for example, can lose its definitions and fail to compile or link after bundling. See [docs/compatibility.md](docs/compatibility.md) for the exact conditions.
 
+## Bundling example
+
+For example, register a three-file library under the ID `mylib`: `modpow.hpp` and `combination.hpp` built on top of `modint.hpp`.
+
+```cpp
+// modint.hpp
+#pragma once
+
+template <long long MOD>
+struct ModInt {
+    long long v = 0;
+    ModInt(long long v) : v(v % MOD) {}
+    ModInt& operator*=(ModInt o) { v = v * o.v % MOD; return *this; }
+    // ~100 more lines of implementation
+};
+
+// modpow.hpp
+#pragma once
+#include "modint.hpp"
+
+template <long long MOD>
+ModInt<MOD> modpow(ModInt<MOD> a, long long n) {
+    ModInt<MOD> r = 1;
+    for (; n > 0; n >>= 1, a *= a)
+        if (n & 1) r *= a;
+    return r;
+}
+
+// combination.hpp
+#pragma once
+#include "modint.hpp"
+
+template <long long MOD>
+struct Combination {
+    // ~100 lines of implementation
+};
+```
+
+The solution includes two files from this library, but only actually uses `modpow`.
+
+```cpp
+// main.cpp
+#include <bits/stdc++.h>
+#include <modpow.hpp>
+#include <combination.hpp>
+
+using mint = ModInt<998244353>;
+
+int main() {
+    std::cout << modpow(mint(2), 100).v << std::endl;
+}
+```
+
+Bundling it produces this single file.
+
+```cpp
+// submission.cpp
+// Bundled with risundle v2.0.0
+#line 1 "main.cpp"
+#include <bits/stdc++.h>
+#line 1 "mylib/modpow.hpp"
+       
+#line 1 "mylib/modint.hpp"
+       
+
+template <long long MOD>
+struct ModInt {
+    long long v = 0;
+    ModInt(long long v) : v(v % MOD) {}
+    ModInt& operator*=(ModInt o) { v = v * o.v % MOD; return *this; }
+    // ~100 more lines of implementation
+};
+#line 3 "mylib/modpow.hpp"
+
+template <long long MOD>
+ModInt<MOD> modpow(ModInt<MOD> a, long long n) {
+    ModInt<MOD> r = 1;
+    for (; n > 0; n >>= 1, a *= a)
+        if (n & 1) r *= a;
+    return r;
+}
+#line 4 "main.cpp"
+
+using mint = ModInt<998244353>;
+
+int main() {
+    std::cout << modpow(mint(2), 100).v << std::endl;
+}
+```
+
+The included but unused `combination.hpp` is removed, while `modint.hpp` is kept because `modpow.hpp` depends on it. The standard library stays as `#include`. The `#line` directives make compiler diagnostics point at the original files, so judge errors also read in your original line numbers.
+
 ## Installation
 
 You need the [Rust toolchain](https://www.rust-lang.org/tools/install) and a C++ compiler with a GCC-compatible driver interface, such as `g++` or `clang++` (MSVC is not supported, as it lacks the `-E`/`-M`/`-v` interface risundle relies on).
