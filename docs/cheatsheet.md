@@ -145,7 +145,7 @@ Even if you forget, bundling stops with a "library changed" error to remind you 
 ### Check what is registered
 
 ```bash
-risundle library list           # IDs and paths
+risundle library list           # IDs, kinds, and paths
 risundle library show mylib     # details
 risundle library show mylib -v  # down to which file defines which identifiers
 ```
