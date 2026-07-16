@@ -48,6 +48,8 @@ pub fn run(args: BundleArgs) -> Result<()> {
         options,
         ..
     } = args;
+    // subcommand が無い経路では clap が <FILE> の必須指定を検証済み (cli::BundleArgs::file を参照)。
+    let file = file.expect("clap should enforce <FILE> on the bundle path");
 
     let Resolution {
         settings,

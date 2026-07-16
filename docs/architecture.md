@@ -10,7 +10,7 @@
 
 ```
 src/
-  main.rs            配線・argv 振り分け
+  main.rs            配線・サブコマンド振り分け
   cli.rs             clap 定義
   config.rs          .risundlerc.toml の読み取り
   commands/          サブコマンドの受け口 (library.rs / bundle.rs)
