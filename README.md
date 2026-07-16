@@ -77,7 +77,7 @@ Bundling it produces this single file.
 
 ```cpp
 // submission.cpp
-// Bundled with risundle v2.0.0
+// Bundled with risundle v2.1.0
 #line 1 "main.cpp"
 #include <bits/stdc++.h>
 #line 1 "mylib/modpow.hpp"
