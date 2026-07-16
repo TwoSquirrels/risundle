@@ -30,6 +30,11 @@ pub enum Command {
     ///
     /// Register a library once with add; bundling (risundle <FILE>) then
     /// recognizes its includes and tree-shakes them.
+    // GNU Coding Standards に合わせ、-V はどの階層でも risundle 本体のバージョンを
+    // 答える (propagate_version)。表示名の既定はハイフン結合 (risundle-library 等) で
+    // 実在しないバイナリ名になってしまい、clap は display_name を伝播しないため、
+    // 全サブコマンドで risundle に上書きする。
+    #[command(display_name = "risundle")]
     Library {
         #[command(subcommand)]
         command: LibraryCommand,
@@ -117,9 +122,11 @@ impl BundleArgs {
     }
 }
 
+// 各 display_name の理由は Command::Library のコメントを参照。
 #[derive(Subcommand, Debug)]
 pub enum LibraryCommand {
     /// Register a library
+    #[command(display_name = "risundle")]
     Add {
         /// Library ID, used to refer to the library later (e.g. in --keep)
         id: String,
@@ -131,16 +138,19 @@ pub enum LibraryCommand {
     /// Each call adds the compiler to the recognized set and merges its
     /// system include paths in, so multiple compilers can be used side by
     /// side.
+    #[command(display_name = "risundle")]
     AddStd {
         /// Compiler whose system include paths to detect [default: g++]
         compiler: Option<PathBuf>,
     },
     /// Remove a library registration
+    #[command(display_name = "risundle")]
     Delete {
         /// Library ID
         id: String,
     },
     /// Apply library changes (updates all libraries if ID is omitted)
+    #[command(display_name = "risundle")]
     Update {
         /// Library ID
         id: Option<String>,
@@ -148,8 +158,10 @@ pub enum LibraryCommand {
         path: Option<PathBuf>,
     },
     /// List registered libraries
+    #[command(display_name = "risundle")]
     List,
     /// Show library details
+    #[command(display_name = "risundle")]
     Show {
         /// Library ID
         id: String,
@@ -216,5 +228,21 @@ mod tests {
     #[test]
     fn bundle_flags_conflict_with_the_library_subcommand() {
         assert!(Cli::try_parse_from(["risundle", "-e", "library", "list"]).is_err());
+    }
+
+    // GNU Coding Standards 流: どの階層の、どんな打ちかけのコマンドでも、--version は
+    // 他の引数 (必須引数の欠落も含む) に優先して risundle 本体のバージョンを答える。
+    #[test]
+    fn version_answers_as_risundle_at_every_level() {
+        for argv in [
+            vec!["risundle", "--version"],
+            vec!["risundle", "main.cpp", "--version"],
+            vec!["risundle", "library", "--version"],
+            vec!["risundle", "library", "add", "--version"],
+        ] {
+            let err = Cli::try_parse_from(argv).unwrap_err();
+            assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+            assert!(err.to_string().starts_with("risundle "));
+        }
     }
 }
