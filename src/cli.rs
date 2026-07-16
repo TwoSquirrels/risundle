@@ -6,27 +6,40 @@ use std::path::PathBuf;
 
 /// A C++ source bundler with tree-shaking for competitive programming.
 ///
-/// When no subcommand is given, bundles the specified C++ file.
+/// Bundles <FILE> and the registered libraries it includes into a single
+/// file for submission, keeping only the headers it actually uses.
+/// Register libraries beforehand with risundle library add.
 #[derive(Parser, Debug)]
 #[command(
     name = "risundle",
     version,
-    after_help = "For library management, see `risundle library --help`."
+    override_usage = "risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]\n       risundle library <COMMAND>",
+    after_help = "For library management, see risundle library --help.",
+    after_long_help = "Examples:\n  risundle library add mylib ~/cp/library\n  risundle main.cpp > submission.cpp\n\nFor library management, see risundle library --help."
 )]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "CLI フラグの列挙であり、bool の数は引数の数を映しているだけで状態機械の複雑さではない"
 )]
 pub struct BundleArgs {
-    /// Path to the compiler to use
+    /// Path to the compiler to use [default: g++]
+    ///
+    /// Any GCC-compatible compiler works (g++, clang++, ...). A default can
+    /// also be set in .risundlerc.toml.
     #[arg(short, long)]
     pub compiler: Option<PathBuf>,
 
-    /// Also keep a library unexpanded, out of tree-shaking (can be repeated)
+    /// Also keep a library unexpanded, out of tree-shaking (can be repeated) [default: std]
+    ///
+    /// Takes the ID given at registration. Effective keep = (configured keep
+    /// + every --keep) - every --no-keep.
     #[arg(short, long = "keep", value_name = "ID")]
     pub keep: Vec<String>,
 
     /// Stop keeping a library (can be repeated; beats --keep)
+    ///
+    /// Removes the ID from the configured keep and --keep, so the library is
+    /// expanded and tree-shaken like any other.
     #[arg(long = "no-keep", value_name = "ID")]
     pub no_keep: Vec<String>,
 
@@ -42,18 +55,27 @@ pub struct BundleArgs {
     #[arg(short = 'n', long = "no-check")]
     pub no_check: bool,
 
-    /// Expand the source without tree-shaking
+    /// Expand the source without tree-shaking (fallback)
+    ///
+    /// Use when tree-shaking removed a definition the solution needs: every
+    /// library except the kept ones stays fully expanded. Unlike --keep, the
+    /// libraries are still expanded rather than left as #include.
     #[arg(long = "no-tree-shaking")]
     pub no_tree_shaking: bool,
 
     /// Ignore any .risundlerc.toml, behaving as if none exists
+    ///
+    /// The nearest .risundlerc.toml above <FILE> normally supplies defaults
+    /// for the compiler, options, keep, and embed.
     #[arg(long = "no-config")]
     pub no_config: bool,
 
     /// C++ source file to bundle
     pub file: PathBuf,
 
-    /// Extra options after `--` passed straight to the compiler
+    /// Extra options after -- passed straight to the compiler
+    ///
+    /// Appended to the options configured in .risundlerc.toml.
     #[arg(last = true, value_name = "COMPILER OPTIONS")]
     pub options: Vec<String>,
 }
@@ -76,6 +98,9 @@ impl BundleArgs {
 // help・usage 上のコマンド名が `risundle library` として表示される。
 
 /// Register and manage libraries
+///
+/// Register a library once with add; bundling (risundle <FILE>) then
+/// recognizes its includes and tree-shakes them.
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct LibraryCli {
@@ -87,14 +112,18 @@ pub struct LibraryCli {
 pub enum LibraryCommand {
     /// Register a library
     Add {
-        /// Library ID
+        /// Library ID, used to refer to the library later (e.g. in --keep)
         id: String,
-        /// Include path
+        /// Include path: the library root directory
         path: PathBuf,
     },
-    /// Register the standard library (`std`) (auto-detects the compiler's system include paths)
+    /// Register the standard library (std) from a compiler's system include paths
+    ///
+    /// Each call adds the compiler to the recognized set and merges its
+    /// system include paths in, so multiple compilers can be used side by
+    /// side.
     AddStd {
-        /// Compiler used to detect system include paths (defaults to g++)
+        /// Compiler whose system include paths to detect [default: g++]
         compiler: Option<PathBuf>,
     },
     /// Remove a library registration
@@ -102,7 +131,7 @@ pub enum LibraryCommand {
         /// Library ID
         id: String,
     },
-    /// Apply library updates (updates all libraries if id is omitted)
+    /// Apply library changes (updates all libraries if ID is omitted)
     Update {
         /// Library ID
         id: Option<String>,
@@ -115,7 +144,7 @@ pub enum LibraryCommand {
     Show {
         /// Library ID
         id: String,
-        /// Include the hash and per-file defined identifiers
+        /// Also show the hash, per-file defined identifiers, and implementation target names
         #[arg(short, long)]
         verbose: bool,
     },
