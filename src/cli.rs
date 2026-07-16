@@ -1,8 +1,5 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
-
-// clap ではトップレベルの必須 positional と optional subcommand を共存させられないため、
-// `library` 管理用の `LibraryCli` とはパーサを分け、エントリポイントで argv を振り分ける。
 
 /// A C++ source bundler with tree-shaking for competitive programming.
 ///
@@ -13,10 +10,33 @@ use std::path::PathBuf;
 #[command(
     name = "risundle",
     version,
+    propagate_version = true,
+    subcommand_negates_reqs = true,
+    args_conflicts_with_subcommands = true,
     override_usage = "risundle [OPTIONS] <FILE> [-- <COMPILER OPTIONS>...]\n       risundle library <COMMAND>",
-    after_help = "For library management, see risundle library --help.",
-    after_long_help = "Examples:\n  risundle library add mylib ~/cp/library\n  risundle main.cpp > submission.cpp\n\nFor library management, see risundle library --help."
+    after_long_help = "Examples:\n  risundle library add mylib ~/cp/library\n  risundle main.cpp > submission.cpp"
 )]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    #[command(flatten)]
+    pub bundle: BundleArgs,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Register and manage libraries
+    ///
+    /// Register a library once with add; bundling (risundle <FILE>) then
+    /// recognizes its includes and tree-shakes them.
+    Library {
+        #[command(subcommand)]
+        command: LibraryCommand,
+    },
+}
+
+#[derive(Args, Debug)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "CLI フラグの列挙であり、bool の数は引数の数を映しているだけで状態機械の複雑さではない"
@@ -71,7 +91,10 @@ pub struct BundleArgs {
     pub no_config: bool,
 
     /// C++ source file to bundle
-    pub file: PathBuf,
+    // subcommand_negates_reqs の都合で型は Option だが required は付いており、
+    // バンドル経路 (subcommand 無し) では clap が存在を保証する。
+    #[arg(required = true)]
+    pub file: Option<PathBuf>,
 
     /// Extra options after -- passed straight to the compiler
     ///
@@ -92,20 +115,6 @@ impl BundleArgs {
             None
         }
     }
-}
-
-// エントリポイントで argv の先頭を `risundle library` に差し替えて渡すため、
-// help・usage 上のコマンド名が `risundle library` として表示される。
-
-/// Register and manage libraries
-///
-/// Register a library once with add; bundling (risundle <FILE>) then
-/// recognizes its includes and tree-shakes them.
-#[derive(Parser, Debug)]
-#[command(version)]
-pub struct LibraryCli {
-    #[command(subcommand)]
-    pub command: LibraryCommand,
 }
 
 #[derive(Subcommand, Debug)]
@@ -156,29 +165,28 @@ mod tests {
 
     #[test]
     fn options_after_file_are_parsed_as_risundle_flags() {
-        let args = BundleArgs::try_parse_from(["risundle", "main.cpp", "-e"]).unwrap();
-        assert!(args.embed);
-        assert!(args.options.is_empty());
+        let cli = Cli::try_parse_from(["risundle", "main.cpp", "-e"]).unwrap();
+        assert!(cli.bundle.embed);
+        assert!(cli.bundle.options.is_empty());
     }
 
     #[test]
     fn double_dash_separates_compiler_options() {
-        let args =
-            BundleArgs::try_parse_from(["risundle", "main.cpp", "--", "-std=gnu++20", "-O2"])
-                .unwrap();
-        assert_eq!(args.options, ["-std=gnu++20", "-O2"]);
+        let cli =
+            Cli::try_parse_from(["risundle", "main.cpp", "--", "-std=gnu++20", "-O2"]).unwrap();
+        assert_eq!(cli.bundle.options, ["-std=gnu++20", "-O2"]);
     }
 
     #[test]
     fn hyphen_arguments_before_double_dash_are_rejected() {
-        assert!(BundleArgs::try_parse_from(["risundle", "main.cpp", "-O2"]).is_err());
+        assert!(Cli::try_parse_from(["risundle", "main.cpp", "-O2"]).is_err());
     }
 
     #[test]
     fn embed_pair_resolves_to_the_last_flag() {
         let parse = |argv: &[&str]| {
             let argv = [&["risundle", "main.cpp"], argv].concat();
-            BundleArgs::try_parse_from(argv).unwrap().embed_override()
+            Cli::try_parse_from(argv).unwrap().bundle.embed_override()
         };
         assert_eq!(parse(&[]), None);
         assert_eq!(parse(&["-e"]), Some(true));
@@ -186,5 +194,27 @@ mod tests {
         // 後勝ち: 同時指定はコマンドライン上で後にある方が有効。
         assert_eq!(parse(&["--embed", "--no-embed"]), Some(false));
         assert_eq!(parse(&["--no-embed", "--embed"]), Some(true));
+    }
+
+    #[test]
+    fn library_is_parsed_as_a_subcommand_not_a_file() {
+        let cli = Cli::try_parse_from(["risundle", "library", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Library {
+                command: LibraryCommand::List
+            })
+        ));
+        assert_eq!(cli.bundle.file, None);
+    }
+
+    #[test]
+    fn the_file_is_required_when_no_subcommand_is_given() {
+        assert!(Cli::try_parse_from(["risundle"]).is_err());
+    }
+
+    #[test]
+    fn bundle_flags_conflict_with_the_library_subcommand() {
+        assert!(Cli::try_parse_from(["risundle", "-e", "library", "list"]).is_err());
     }
 }
